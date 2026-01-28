@@ -1,0 +1,1242 @@
+<!-- ==================== index.html ==================== -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Network Visualization</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Main Canvas -->
+    <canvas id="networkCanvas"></canvas>
+
+    <!-- Statistics Panel -->
+    <div id="statsPanel" class="stats-panel">
+        <h3>Network Statistics</h3>
+        <div class="stat-item">
+            <span class="stat-icon">●●●</span>
+            <div class="stat-content">
+                <div class="stat-label">Total Nodes</div>
+                <div class="stat-value" id="totalNodes">0</div>
+            </div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-icon">──</span>
+            <div class="stat-content">
+                <div class="stat-label">Total Edges</div>
+                <div class="stat-value" id="totalEdges">0</div>
+            </div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-icon">⊙</span>
+            <div class="stat-content">
+                <div class="stat-label">Avg Connections</div>
+                <div class="stat-value" id="avgConnections">0.00</div>
+            </div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-icon">▦</span>
+            <div class="stat-content">
+                <div class="stat-label">Network Density</div>
+                <div class="stat-value" id="networkDensity">0%</div>
+                <div class="density-bar">
+                    <div class="density-fill" id="densityFill"></div>
+                </div>
+            </div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-icon">→</span>
+            <div class="stat-content">
+                <div class="stat-label">Avg Node Speed</div>
+                <div class="stat-value" id="avgSpeed">0</div>
+                <canvas id="speedSparkline" width="200" height="30"></canvas>
+            </div>
+        </div>
+        <div class="stat-item">
+            <span class="stat-icon">◈</span>
+            <div class="stat-content">
+                <div class="stat-label">Clustering Coefficient</div>
+                <div class="stat-value" id="clustering">0.00</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Control Panel Toggle Button -->
+    <button id="settingsToggle" class="settings-toggle">
+        <span class="gear-icon">⚙</span>
+        Settings
+    </button>
+
+    <!-- Control Panel -->
+    <div id="controlPanel" class="control-panel">
+        <div class="panel-header">
+            <h3>Control Panel</h3>
+        </div>
+
+        <div class="control-section">
+            <button id="pauseBtn" class="control-btn primary">Pause</button>
+            <button id="randomizeBtn" class="control-btn">Randomize</button>
+        </div>
+
+        <div class="control-section">
+            <label class="control-label">
+                Node Speed: <span id="speedValue">1.5</span>
+            </label>
+            <input type="range" id="nodeSpeed" min="0.1" max="5" step="0.1" value="1.5" class="slider speed-slider">
+        </div>
+
+        <div class="control-section">
+            <label class="control-label">
+                Connectivity Radius: <span id="radiusValue">150</span>px
+            </label>
+            <input type="range" id="connectRadius" min="50" max="300" step="10" value="150" class="slider radius-slider">
+        </div>
+
+        <div class="control-section">
+            <label class="control-label">
+                Node Count: <span id="countValue">75</span>
+            </label>
+            <input type="range" id="nodeCount" min="10" max="200" step="5" value="75" class="slider">
+        </div>
+
+        <div class="control-section">
+            <label class="control-label">
+                Node Size: <span id="sizeValue">6</span>px
+            </label>
+            <input type="range" id="nodeSize" min="2" max="15" step="0.5" value="6" class="slider">
+            <div class="preview-node" id="sizePreview"></div>
+        </div>
+
+        <div class="control-section">
+            <label class="control-label">
+                Edge Thickness: <span id="thicknessValue">1.5</span>px
+            </label>
+            <input type="range" id="edgeThickness" min="0.5" max="4" step="0.1" value="1.5" class="slider">
+            <div class="preview-edge" id="thicknessPreview"></div>
+        </div>
+
+        <div class="control-section">
+            <h4>Special Modes</h4>
+            <button id="normalMode" class="mode-btn active">Normal</button>
+            <button id="galaxyMode" class="mode-btn">Galaxy</button>
+            <button id="waveMode" class="mode-btn">Wave</button>
+            <button id="explosionMode" class="mode-btn">Explosion</button>
+            <button id="fireflyMode" class="mode-btn">Firefly</button>
+        </div>
+
+        <div class="control-section">
+            <button id="resetBtn" class="control-btn reset">Reset to Defaults</button>
+        </div>
+
+        <div class="keyboard-hints">
+            <h4>Keyboard Shortcuts</h4>
+            <div class="hint-item"><kbd>Space</kbd> Pause/Resume</div>
+            <div class="hint-item"><kbd>R</kbd> Reset</div>
+            <div class="hint-item"><kbd>S</kbd> Screenshot</div>
+            <div class="hint-item"><kbd>F</kbd> Fullscreen</div>
+            <div class="hint-item"><kbd>H</kbd> Hide/Show UI</div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
+<!-- ==================== styles.css ==================== -->
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+    background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+    color: #ffffff;
+}
+
+#networkCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+/* Statistics Panel */
+.stats-panel {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    width: 280px;
+    background: rgba(10, 14, 39, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(0, 217, 255, 0.2);
+    z-index: 100;
+    transition: all 0.3s ease;
+}
+
+.stats-panel h3 {
+    font-size: 18px;
+    margin-bottom: 15px;
+    color: #00d9ff;
+    text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+}
+
+.stat-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 15px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.stat-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.stat-icon {
+    font-size: 20px;
+    margin-right: 12px;
+    color: #00d9ff;
+    min-width: 24px;
+}
+
+.stat-content {
+    flex: 1;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    color: #00d9ff;
+    text-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+    transition: all 0.3s ease;
+}
+
+.stat-value.changed {
+    animation: glow 0.5s ease;
+}
+
+@keyframes glow {
+    0%, 100% { text-shadow: 0 0 10px rgba(0, 217, 255, 0.3); }
+    50% { text-shadow: 0 0 20px rgba(0, 217, 255, 0.8); }
+}
+
+.density-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.density-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff4444, #ffaa44, #44ff44);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+#speedSparkline {
+    margin-top: 8px;
+    width: 100%;
+    height: 30px;
+}
+
+/* Settings Toggle Button */
+.settings-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(10, 14, 39, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 217, 255, 0.3);
+    border-radius: 8px;
+    padding: 12px 20px;
+    color: #00d9ff;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 101;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.settings-toggle:hover {
+    background: rgba(0, 217, 255, 0.1);
+    border-color: #00d9ff;
+    box-shadow: 0 4px 20px rgba(0, 217, 255, 0.4);
+}
+
+.gear-icon {
+    font-size: 18px;
+    animation: rotate 4s linear infinite;
+}
+
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Control Panel */
+.control-panel {
+    position: fixed;
+    top: 0;
+    right: -320px;
+    width: 300px;
+    height: 100vh;
+    background: rgba(10, 14, 39, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-left: 1px solid rgba(0, 217, 255, 0.2);
+    padding: 20px;
+    overflow-y: auto;
+    z-index: 100;
+    transition: right 0.3s ease-in-out;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
+}
+
+.control-panel.open {
+    right: 0;
+}
+
+.panel-header h3 {
+    font-size: 20px;
+    color: #00d9ff;
+    margin-bottom: 20px;
+    text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+}
+
+.control-section {
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.control-section:last-child {
+    border-bottom: none;
+}
+
+.control-section h4 {
+    font-size: 14px;
+    color: #b537ff;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.control-label {
+    display: block;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 8px;
+}
+
+.control-label span {
+    float: right;
+    color: #00d9ff;
+    font-weight: bold;
+}
+
+/* Sliders */
+.slider {
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    outline: none;
+    background: linear-gradient(90deg, #1a1f3a, #00d9ff);
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #00d9ff;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0, 217, 255, 0.8);
+    transition: all 0.2s ease;
+}
+
+.slider::-webkit-slider-thumb:hover {
+    width: 20px;
+    height: 20px;
+    box-shadow: 0 0 15px rgba(0, 217, 255, 1);
+}
+
+.slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #00d9ff;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 10px rgba(0, 217, 255, 0.8);
+}
+
+.radius-slider {
+    background: linear-gradient(90deg, #1a1f3a, #b537ff);
+}
+
+.radius-slider::-webkit-slider-thumb {
+    background: #b537ff;
+    box-shadow: 0 0 10px rgba(181, 55, 255, 0.8);
+}
+
+.radius-slider::-moz-range-thumb {
+    background: #b537ff;
+    box-shadow: 0 0 10px rgba(181, 55, 255, 0.8);
+}
+
+/* Preview Elements */
+.preview-node {
+    margin-top: 10px;
+    width: 100%;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.preview-node::before {
+    content: '';
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #00d9ff;
+    box-shadow: 0 0 15px rgba(0, 217, 255, 0.8);
+}
+
+.preview-edge {
+    margin-top: 10px;
+    width: 100%;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.preview-edge::before {
+    content: '';
+    width: 80%;
+    height: 3px;
+    background: linear-gradient(90deg, #00d9ff, #b537ff);
+    box-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
+}
+
+/* Buttons */
+.control-btn {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.control-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: #00d9ff;
+}
+
+.control-btn.primary {
+    background: rgba(0, 217, 255, 0.2);
+    border-color: #00d9ff;
+}
+
+.control-btn.primary:hover {
+    background: rgba(0, 217, 255, 0.3);
+    box-shadow: 0 0 15px rgba(0, 217, 255, 0.5);
+}
+
+.control-btn.reset {
+    background: rgba(100, 100, 100, 0.2);
+    border-color: rgba(150, 150, 150, 0.3);
+}
+
+.mode-btn {
+    display: inline-block;
+    padding: 8px 12px;
+    margin: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: #ffffff;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mode-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.mode-btn.active {
+    background: rgba(181, 55, 255, 0.3);
+    border-color: #b537ff;
+    box-shadow: 0 0 10px rgba(181, 55, 255, 0.5);
+}
+
+/* Keyboard Hints */
+.keyboard-hints {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.keyboard-hints h4 {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 10px;
+}
+
+.hint-item {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 6px;
+}
+
+kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 10px;
+    margin-right: 8px;
+    color: #00d9ff;
+}
+
+/* Scrollbar Styling */
+.control-panel::-webkit-scrollbar {
+    width: 6px;
+}
+
+.control-panel::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.control-panel::-webkit-scrollbar-thumb {
+    background: rgba(0, 217, 255, 0.3);
+    border-radius: 3px;
+}
+
+.control-panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 217, 255, 0.5);
+}
+
+/* Hidden UI State */
+.ui-hidden .stats-panel,
+.ui-hidden .settings-toggle,
+.ui-hidden .control-panel {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .stats-panel {
+        width: 240px;
+        left: 10px;
+        top: 10px;
+        padding: 15px;
+    }
+
+    .control-panel {
+        width: 280px;
+    }
+
+    .settings-toggle {
+        right: 10px;
+        top: 10px;
+    }
+}
+</style>
+
+<!-- ==================== script.js ==================== -->
+<script>
+// ===== Configuration =====
+const config = {
+    nodeSpeed: 1.5,
+    connectRadius: 150,
+    nodeCount: 75,
+    nodeSize: 6,
+    edgeThickness: 1.5,
+    targetFPS: 60,
+    statsUpdateInterval: 5
+};
+
+const defaults = { ...config };
+
+// ===== Node Class =====
+class Node {
+    constructor(x, y, id) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+        this.size = config.nodeSize;
+        this.color = '#00d9ff';
+        this.connections = [];
+        this.pulse = 0;
+        this.brightness = 1;
+        this.trail = [];
+        this.opacity = 1;
+    }
+
+    update(deltaTime, mode, centerX, centerY, time) {
+        const speed = config.nodeSpeed;
+
+        // Special mode behaviors
+        switch (mode) {
+            case 'galaxy':
+                this.updateGalaxy(centerX, centerY, time);
+                break;
+            case 'wave':
+                this.updateWave(centerX, centerY, time);
+                break;
+            case 'explosion':
+                this.updateExplosion(centerX, centerY, time);
+                break;
+            case 'firefly':
+                this.updateFirefly(time);
+                break;
+            default:
+                this.updateNormal(deltaTime, speed);
+        }
+
+        // Update pulse animation
+        this.pulse = Math.sin(time * 0.003) * 0.2 + 1;
+
+        // Update trail
+        this.trail.unshift({ x: this.x, y: this.y, opacity: 1 });
+        if (this.trail.length > 10) this.trail.pop();
+        this.trail.forEach((point, i) => {
+            point.opacity = 1 - (i / this.trail.length);
+        });
+
+        // Brightness based on connections
+        this.brightness = 0.7 + (this.connections.length * 0.05);
+    }
+
+    updateNormal(deltaTime, speed) {
+        this.x += this.vx * speed;
+        this.y += this.vy * speed;
+        this.handleBoundaryCollision();
+    }
+
+    updateGalaxy(centerX, centerY, time) {
+        const angle = Math.atan2(this.y - centerY, this.x - centerX);
+        const distance = Math.sqrt((this.x - centerX) ** 2 + (this.y - centerY) ** 2);
+        const orbitSpeed = 0.02 / (distance / 100 + 1);
+
+        const newAngle = angle + orbitSpeed;
+        this.x = centerX + Math.cos(newAngle) * distance;
+        this.y = centerY + Math.sin(newAngle) * distance;
+    }
+
+    updateWave(centerX, centerY, time) {
+        this.x += this.vx * config.nodeSpeed * 0.5;
+        this.y = centerY + Math.sin((this.x + time) * 0.01) * 100;
+
+        if (this.x < 0 || this.x > canvas.width) {
+            this.vx *= -1;
+        }
+    }
+
+    updateExplosion(centerX, centerY, time) {
+        const angle = Math.atan2(this.y - centerY, this.x - centerX);
+        const distance = Math.sqrt((this.x - centerX) ** 2 + (this.y - centerY) ** 2);
+
+        const pulsePhase = Math.sin(time * 0.001) * 0.5 + 0.5;
+        const targetDistance = 200 + pulsePhase * 150;
+
+        if (distance < targetDistance) {
+            this.x += Math.cos(angle) * 2;
+            this.y += Math.sin(angle) * 2;
+        } else {
+            this.x -= Math.cos(angle) * 2;
+            this.y -= Math.sin(angle) * 2;
+        }
+    }
+
+    updateFirefly(time) {
+        this.x += this.vx * config.nodeSpeed;
+        this.y += this.vy * config.nodeSpeed;
+        this.handleBoundaryCollision();
+
+        // Flickering effect
+        this.brightness = 0.5 + Math.random() * 0.5 + Math.sin(time * 0.01 + this.id) * 0.3;
+    }
+
+    handleBoundaryCollision() {
+        if (this.x < 0 || this.x > canvas.width) {
+            this.vx *= -1;
+            this.x = Math.max(0, Math.min(canvas.width, this.x));
+        }
+        if (this.y < 0 || this.y > canvas.height) {
+            this.vy *= -1;
+            this.y = Math.max(0, Math.min(canvas.height, this.y));
+        }
+    }
+
+    draw(ctx, hoveredNode) {
+        const isHovered = hoveredNode === this;
+        const size = this.size * this.pulse * (isHovered ? 1.3 : 1);
+
+        // Draw trail
+        this.trail.forEach((point, i) => {
+            if (i === 0) return;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, size * 0.5, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(0, 217, 255, ${point.opacity * 0.2})`;
+            ctx.fill();
+        });
+
+        // Draw glow
+        const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, size * 3);
+        gradient.addColorStop(0, `rgba(0, 217, 255, ${0.3 * this.brightness * this.opacity})`);
+        gradient.addColorStop(1, 'rgba(0, 217, 255, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(this.x - size * 3, this.y - size * 3, size * 6, size * 6);
+
+        // Draw node
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+        const color = this.connections.length > 5 ? '#b537ff' : '#00d9ff';
+        ctx.fillStyle = isHovered ? '#ffffff' : color;
+        ctx.shadowBlur = 15 * this.brightness;
+        ctx.shadowColor = color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+
+// ===== Edge Class =====
+class Edge {
+    constructor(node1, node2) {
+        this.node1 = node1;
+        this.node2 = node2;
+        this.strength = 1;
+        this.age = 0;
+        this.pulseOffset = Math.random() * Math.PI * 2;
+    }
+
+    draw(ctx, time, hoveredNode) {
+        const distance = Math.sqrt(
+            (this.node2.x - this.node1.x) ** 2 +
+            (this.node2.y - this.node1.y) ** 2
+        );
+
+        if (distance > config.connectRadius) return;
+
+        const isHighlighted = hoveredNode === this.node1 || hoveredNode === this.node2;
+        const opacity = (1 - distance / config.connectRadius) * 0.4 * (isHighlighted ? 1.5 : 1);
+
+        // Draw main line
+        ctx.beginPath();
+        ctx.moveTo(this.node1.x, this.node1.y);
+
+        // Bezier curve for organic look
+        const midX = (this.node1.x + this.node2.x) / 2;
+        const midY = (this.node1.y + this.node2.y) / 2;
+        const offsetX = (this.node2.y - this.node1.y) * 0.1;
+        const offsetY = (this.node1.x - this.node2.x) * 0.1;
+
+        ctx.quadraticCurveTo(
+            midX + offsetX,
+            midY + offsetY,
+            this.node2.x,
+            this.node2.y
+        );
+
+        const gradient = ctx.createLinearGradient(
+            this.node1.x, this.node1.y,
+            this.node2.x, this.node2.y
+        );
+        gradient.addColorStop(0, `rgba(0, 217, 255, ${opacity})`);
+        gradient.addColorStop(1, `rgba(181, 55, 255, ${opacity})`);
+
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = config.edgeThickness;
+        ctx.stroke();
+
+        // Energy pulse
+        if (Math.random() < 0.02 || isHighlighted) {
+            const pulsePos = (Math.sin(time * 0.005 + this.pulseOffset) + 1) / 2;
+            const pulseX = this.node1.x + (this.node2.x - this.node1.x) * pulsePos;
+            const pulseY = this.node1.y + (this.node2.y - this.node1.y) * pulsePos;
+
+            ctx.beginPath();
+            ctx.arc(pulseX, pulseY, 3, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00d9ff';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    }
+}
+
+// ===== Main Application =====
+const canvas = document.getElementById('networkCanvas');
+const ctx = canvas.getContext('2d');
+
+let nodes = [];
+let edges = [];
+let animationId;
+let lastTime = 0;
+let isPaused = false;
+let currentMode = 'normal';
+let frameCount = 0;
+let hoveredNode = null;
+let draggedNode = null;
+let mouseX = 0;
+let mouseY = 0;
+let zoom = 1;
+let speedHistory = [];
+let uiVisible = true;
+
+// Initialize canvas size
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+
+// Initialize nodes
+function initNodes() {
+    nodes = [];
+    for (let i = 0; i < config.nodeCount; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+        nodes.push(new Node(x, y, i));
+    }
+}
+
+// Update node count
+function updateNodeCount(newCount) {
+    const diff = newCount - nodes.length;
+
+    if (diff > 0) {
+        // Add nodes with fade-in
+        for (let i = 0; i < diff; i++) {
+            const node = new Node(
+                Math.random() * canvas.width,
+                Math.random() * canvas.height,
+                nodes.length
+            );
+            node.opacity = 0;
+            nodes.push(node);
+        }
+    } else if (diff < 0) {
+        // Remove nodes with fade-out
+        const toRemove = nodes.slice(diff);
+        toRemove.forEach(node => node.opacity = 0);
+        setTimeout(() => {
+            nodes = nodes.slice(0, newCount);
+        }, 300);
+    }
+}
+
+// Calculate edges
+function calculateEdges() {
+    edges = [];
+    for (let i = 0; i < nodes.length; i++) {
+        nodes[i].connections = [];
+        for (let j = i + 1; j < nodes.length; j++) {
+            const distance = Math.sqrt(
+                (nodes[j].x - nodes[i].x) ** 2 +
+                (nodes[j].y - nodes[i].y) ** 2
+            );
+
+            if (distance < config.connectRadius) {
+                edges.push(new Edge(nodes[i], nodes[j]));
+                nodes[i].connections.push(nodes[j].id);
+                nodes[j].connections.push(nodes[i].id);
+            }
+        }
+    }
+}
+
+// Calculate statistics
+function calculateStats() {
+    const totalNodes = nodes.length;
+    const totalEdges = edges.length;
+    const avgConnections = totalNodes > 0 ? (totalEdges * 2) / totalNodes : 0;
+    const possibleEdges = (totalNodes * (totalNodes - 1)) / 2;
+    const density = possibleEdges > 0 ? (totalEdges / possibleEdges) * 100 : 0;
+
+    // Average speed
+    let totalSpeed = 0;
+    nodes.forEach(node => {
+        const speed = Math.sqrt(node.vx ** 2 + node.vy ** 2);
+        totalSpeed += speed;
+    });
+    const avgSpeed = totalNodes > 0 ? (totalSpeed / totalNodes) * config.nodeSpeed : 0;
+
+    // Clustering coefficient
+    let clusteringSum = 0;
+    nodes.forEach(node => {
+        if (node.connections.length < 2) return;
+
+        let actualConnections = 0;
+        for (let i = 0; i < node.connections.length; i++) {
+            for (let j = i + 1; j < node.connections.length; j++) {
+                const node1 = nodes.find(n => n.id === node.connections[i]);
+                const node2 = nodes.find(n => n.id === node.connections[j]);
+                if (node1 && node2 && node1.connections.includes(node2.id)) {
+                    actualConnections++;
+                }
+            }
+        }
+
+        const possibleConnections = (node.connections.length * (node.connections.length - 1)) / 2;
+        clusteringSum += possibleConnections > 0 ? actualConnections / possibleConnections : 0;
+    });
+
+    const clustering = totalNodes > 0 ? clusteringSum / totalNodes : 0;
+
+    return { totalNodes, totalEdges, avgConnections, density, avgSpeed, clustering };
+}
+
+// Update statistics display
+function updateStatsDisplay(stats) {
+    document.getElementById('totalNodes').textContent = stats.totalNodes;
+    document.getElementById('totalEdges').textContent = stats.totalEdges;
+    document.getElementById('avgConnections').textContent = stats.avgConnections.toFixed(2);
+    document.getElementById('networkDensity').textContent = stats.density.toFixed(1) + '%';
+    document.getElementById('avgSpeed').textContent = Math.round(stats.avgSpeed);
+    document.getElementById('clustering').textContent = stats.clustering.toFixed(2);
+
+    // Update density bar
+    const densityFill = document.getElementById('densityFill');
+    densityFill.style.width = stats.density + '%';
+
+    // Update sparkline
+    speedHistory.push(stats.avgSpeed);
+    if (speedHistory.length > 30) speedHistory.shift();
+    drawSparkline();
+}
+
+// Draw sparkline
+function drawSparkline() {
+    const sparkCanvas = document.getElementById('speedSparkline');
+    const sparkCtx = sparkCanvas.getContext('2d');
+    const width = sparkCanvas.width;
+    const height = sparkCanvas.height;
+
+    sparkCtx.clearRect(0, 0, width, height);
+
+    if (speedHistory.length < 2) return;
+
+    const max = Math.max(...speedHistory, 1);
+    const step = width / (speedHistory.length - 1);
+
+    sparkCtx.beginPath();
+    sparkCtx.strokeStyle = '#00d9ff';
+    sparkCtx.lineWidth = 2;
+
+    speedHistory.forEach((speed, i) => {
+        const x = i * step;
+        const y = height - (speed / max) * height;
+        if (i === 0) {
+            sparkCtx.moveTo(x, y);
+        } else {
+            sparkCtx.lineTo(x, y);
+        }
+    });
+
+    sparkCtx.stroke();
+}
+
+// Animation loop
+function animate(currentTime) {
+    animationId = requestAnimationFrame(animate);
+
+    if (isPaused) return;
+
+    const deltaTime = currentTime - lastTime;
+    lastTime = currentTime;
+
+    // Clear canvas with gradient background
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#0a0e27');
+    gradient.addColorStop(1, '#1a1f3a');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Update nodes
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    nodes.forEach(node => {
+        node.update(deltaTime, currentMode, centerX, centerY, currentTime);
+
+        // Fade in/out
+        if (node.opacity < 1) {
+            node.opacity = Math.min(1, node.opacity + 0.02);
+        }
+    });
+
+    // Calculate edges
+    if (frameCount % 2 === 0) {
+        calculateEdges();
+    }
+
+    // Draw edges
+    edges.forEach(edge => {
+        edge.draw(ctx, currentTime, hoveredNode);
+    });
+
+    // Draw nodes
+    nodes.forEach(node => {
+        node.draw(ctx, hoveredNode);
+    });
+
+    // Update statistics
+    if (frameCount % config.statsUpdateInterval === 0) {
+        const stats = calculateStats();
+        updateStatsDisplay(stats);
+    }
+
+    frameCount++;
+}
+
+// Mouse interactions
+canvas.addEventListener('mousemove', (e) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+
+    // Find hovered node
+    hoveredNode = null;
+    for (const node of nodes) {
+        const distance = Math.sqrt((node.x - mouseX) ** 2 + (node.y - mouseY) ** 2);
+        if (distance < node.size * 2) {
+            hoveredNode = node;
+            canvas.style.cursor = 'pointer';
+            break;
+        }
+    }
+
+    if (!hoveredNode) {
+        canvas.style.cursor = 'default';
+    }
+
+    // Drag node
+    if (draggedNode) {
+        draggedNode.x = mouseX;
+        draggedNode.y = mouseY;
+        draggedNode.vx = 0;
+        draggedNode.vy = 0;
+    }
+});
+
+canvas.addEventListener('mousedown', (e) => {
+    if (hoveredNode) {
+        draggedNode = hoveredNode;
+    }
+});
+
+canvas.addEventListener('mouseup', () => {
+    if (draggedNode) {
+        draggedNode.vx = (Math.random() - 0.5) * 2;
+        draggedNode.vy = (Math.random() - 0.5) * 2;
+        draggedNode = null;
+    }
+});
+
+canvas.addEventListener('click', (e) => {
+    if (!hoveredNode) {
+        // Attract nearby nodes to cursor
+        nodes.forEach(node => {
+            const dx = mouseX - node.x;
+            const dy = mouseY - node.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < 200) {
+                node.vx += dx * 0.01;
+                node.vy += dy * 0.01;
+            }
+        });
+    }
+});
+
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoom += e.deltaY * -0.001;
+    zoom = Math.min(Math.max(0.5, zoom), 2);
+
+    ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
+});
+
+// Control panel functionality
+document.getElementById('settingsToggle').addEventListener('click', () => {
+    document.getElementById('controlPanel').classList.toggle('open');
+});
+
+document.getElementById('pauseBtn').addEventListener('click', function() {
+    isPaused = !isPaused;
+    this.textContent = isPaused ? 'Resume' : 'Pause';
+});
+
+document.getElementById('randomizeBtn').addEventListener('click', () => {
+    nodes.forEach(node => {
+        node.x = Math.random() * canvas.width;
+        node.y = Math.random() * canvas.height;
+        node.vx = (Math.random() - 0.5) * 4;
+        node.vy = (Math.random() - 0.5) * 4;
+    });
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+    Object.assign(config, defaults);
+    updateControls();
+    updateNodeCount(config.nodeCount);
+    currentMode = 'normal';
+    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('normalMode').classList.add('active');
+});
+
+// Slider controls
+document.getElementById('nodeSpeed').addEventListener('input', function() {
+    config.nodeSpeed = parseFloat(this.value);
+    document.getElementById('speedValue').textContent = this.value;
+});
+
+document.getElementById('connectRadius').addEventListener('input', function() {
+    config.connectRadius = parseFloat(this.value);
+    document.getElementById('radiusValue').textContent = this.value;
+});
+
+document.getElementById('nodeCount').addEventListener('input', function() {
+    config.nodeCount = parseInt(this.value);
+    document.getElementById('countValue').textContent = this.value;
+    updateNodeCount(config.nodeCount);
+});
+
+document.getElementById('nodeSize').addEventListener('input', function() {
+    config.nodeSize = parseFloat(this.value);
+    document.getElementById('sizeValue').textContent = this.value;
+    nodes.forEach(node => node.size = config.nodeSize);
+
+    // Update preview
+    const preview = document.getElementById('sizePreview');
+    preview.style.setProperty('--size', config.nodeSize + 'px');
+});
+
+document.getElementById('edgeThickness').addEventListener('input', function() {
+    config.edgeThickness = parseFloat(this.value);
+    document.getElementById('thicknessValue').textContent = this.value;
+});
+
+// Mode buttons
+const modes = ['normal', 'galaxy', 'wave', 'explosion', 'firefly'];
+modes.forEach(mode => {
+    document.getElementById(mode + 'Mode').addEventListener('click', function() {
+        currentMode = mode;
+        document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+        this.classList.add('active');
+    });
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    switch(e.key.toLowerCase()) {
+        case ' ':
+            e.preventDefault();
+            document.getElementById('pauseBtn').click();
+            break;
+        case 'r':
+            document.getElementById('resetBtn').click();
+            break;
+        case 's':
+            takeScreenshot();
+            break;
+        case 'f':
+            toggleFullscreen();
+            break;
+        case 'h':
+            toggleUI();
+            break;
+    }
+});
+
+function takeScreenshot() {
+    const link = document.createElement('a');
+    link.download = 'neural-network-' + Date.now() + '.png';
+    link.href = canvas.toDataURL();
+    link.click();
+}
+
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+    } else {
+        document.exitFullscreen();
+    }
+}
+
+function toggleUI() {
+    uiVisible = !uiVisible;
+    document.body.classList.toggle('ui-hidden', !uiVisible);
+}
+
+function updateControls() {
+    document.getElementById('nodeSpeed').value = config.nodeSpeed;
+    document.getElementById('speedValue').textContent = config.nodeSpeed;
+    document.getElementById('connectRadius').value = config.connectRadius;
+    document.getElementById('radiusValue').textContent = config.connectRadius;
+    document.getElementById('nodeCount').value = config.nodeCount;
+    document.getElementById('countValue').textContent = config.nodeCount;
+    document.getElementById('nodeSize').value = config.nodeSize;
+    document.getElementById('sizeValue').textContent = config.nodeSize;
+    document.getElementById('edgeThickness').value = config.edgeThickness;
+    document.getElementById('thicknessValue').textContent = config.edgeThickness;
+}
+
+// Initialize
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+initNodes();
+updateControls();
+animate(0);
+
+console.log('🌐 Neural Network Visualization loaded successfully!');
+console.log('💡 Press H to hide/show UI, Space to pause, S for screenshot');
+</script>
