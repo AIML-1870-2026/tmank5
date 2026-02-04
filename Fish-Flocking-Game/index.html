@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fish Flocking Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a1628;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        canvas {
+            display: block;
+            background: linear-gradient(180deg, #0a1628 0%, #1a3a5c 50%, #0d2840 100%);
+        }
+        #ui {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #88ccff;
+            font-size: 12px;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            line-height: 1.6;
+        }
+        #controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            color: #66aadd;
+            font-size: 11px;
+            text-align: right;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            line-height: 1.5;
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .key {
+            background: rgba(100,150,200,0.3);
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        #paused {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffcc44;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="ui"></div>
+    <div id="controls">
+        <b>Controls</b><br>
+        <span class="key">Space</span> Pause | <span class="key">R</span> Reset<br>
+        <span class="key">N</span> Add Fish | <span class="key">M</span> Remove<br>
+        <span class="key">1-5</span> Toggle Behaviors<br>
+        <span class="key">Q/W/E/T</span> Mood Override<br>
+        <span class="key">D/F/G</span> Debug Views<br>
+        <span class="key">Left Click</span> Food<br>
+        <span class="key">Right Click</span> Scare
+    </div>
+    <div id="paused">PAUSED</div>
+
+    <script>
+        // Canvas Setup
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const ui = document.getElementById('ui');
+        const pausedDisplay = document.getElementById('paused');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // Mood Types
+        const MOOD = {
+            CALM: 'calm',
+            ALERT: 'alert',
+            PANICKED: 'panicked',
+            CURIOUS: 'curious'
+        };
+
+        // Mood Colors
+        const MOOD_COLORS = {
+            calm: { body: '#4488ff', fin: '#2266dd' },
+            alert: { body: '#ffaa44', fin: '#dd8822' },
+            panicked: { body: '#ff4466', fin: '#dd2244' },
+            curious: { body: '#44ffaa', fin: '#22dd88' }
+        };
+
+        // Mood Parameters
+        const MOOD_PARAMS = {
+            calm: { cohesion: 1.2, alignment: 1.0, separation: 0.8, speedMult: 0.8 },
+            alert: { cohesion: 1.0, alignment: 1.4, separation: 1.0, speedMult: 1.2 },
+            panicked: { cohesion: 0.5, alignment: 0.5, separation: 2.0, speedMult: 1.8 },
+            curious: { cohesion: 1.0, alignment: 0.6, separation: 1.0, speedMult: 0.9 }
+        };
+
+        // Global Parameters
+        const params = {
+            separationWeight: 1.5,
+            alignmentWeight: 1.0,
+            cohesionWeight: 1.0,
+            maxSpeed: 4,
+            maxForce: 0.15,
+            drag: 0.99,
+            perceptionRadius: 80,
+            separationRadius: 30,
+            currentStrength: 0.02,
+            currentAngle: 0,
+            foodAttractionStrength: 3,
+            predatorFearRadius: 150,
+            predatorFearStrength: 5,
+            boundaryMargin: 80,
+            boundaryForce: 0.5
+        };
+
+        // Toggles
+        const toggles = {
+            separation: true,
+            alignment: true,
+            cohesion: true,
+            predators: true,
+            current: true,
+            showPerception: false,
+            showForces: false,
+            showGrid: false
+        };
+
+        // Simulation State
+        let paused = false;
+        let moodOverride = null;
+        let fish = [];
+        let food = [];
+        let predators = [];
+        let scarePulses = [];
+
+        // Spatial Grid
+        const CELL_SIZE = 100;
+        let grid = {};
+
+        function getCellKey(x, y) {
+            const cx = Math.floor(x / CELL_SIZE);
+            const cy = Math.floor(y / CELL_SIZE);
+            return `${cx},${cy}`;
+        }
+
+        function clearGrid() {
+            grid = {};
+        }
+
+        function addToGrid(entity) {
+            const key = getCellKey(entity.x, entity.y);
+            if (!grid[key]) grid[key] = [];
+            grid[key].push(entity);
+        }
+
+        function getNearby(x, y, radius) {
+            const nearby = [];
+            const cellRadius = Math.ceil(radius / CELL_SIZE);
+            const cx = Math.floor(x / CELL_SIZE);
+            const cy = Math.floor(y / CELL_SIZE);
+
+            for (let dx = -cellRadius; dx <= cellRadius; dx++) {
+                for (let dy = -cellRadius; dy <= cellRadius; dy++) {
+                    const key = `${cx + dx},${cy + dy}`;
+                    if (grid[key]) {
+                        for (const entity of grid[key]) {
+                            const dist = Math.hypot(entity.x - x, entity.y - y);
+                            if (dist < radius && dist > 0) {
+                                nearby.push({ entity, dist });
+                            }
+                        }
+                    }
+                }
+            }
+            return nearby;
+        }
+
+        // Vector Helpers
+        function limit(vx, vy, max) {
+            const mag = Math.hypot(vx, vy);
+            if (mag > max && mag > 0) {
+                return [vx / mag * max, vy / mag * max];
+            }
+            return [vx, vy];
+        }
+
+        function normalize(vx, vy) {
+            const mag = Math.hypot(vx, vy);
+            if (mag > 0) return [vx / mag, vy / mag];
+            return [0, 0];
+        }
+
+        // Fish Class
+        class Fish {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1 + Math.random() * 2;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.ax = 0;
+                this.ay = 0;
+                this.size = 8 + Math.random() * 4;
+                this.mood = MOOD.CALM;
+                this.targetMood = MOOD.CALM;
+                this.moodTransition = 0;
+                this.energy = 0.5 + Math.random() * 0.5;
+                this.forceVectors = [];
+            }
+
+            applyForce(fx, fy, label = '') {
+                this.ax += fx;
+                this.ay += fy;
+                if (toggles.showForces && label) {
+                    this.forceVectors.push({ fx: fx * 20, fy: fy * 20, label });
+                }
+            }
+
+            getMoodParams() {
+                return MOOD_PARAMS[this.mood];
+            }
+
+            separation(neighbors) {
+                if (!toggles.separation || neighbors.length === 0) return [0, 0];
+                let steerX = 0, steerY = 0;
+                let count = 0;
+
+                for (const { entity, dist } of neighbors) {
+                    if (dist < params.separationRadius) {
+                        const dx = this.x - entity.x;
+                        const dy = this.y - entity.y;
+                        const weight = 1 / Math.max(dist, 0.1);
+                        steerX += dx * weight;
+                        steerY += dy * weight;
+                        count++;
+                    }
+                }
+
+                if (count > 0) {
+                    steerX /= count;
+                    steerY /= count;
+                    const [nx, ny] = normalize(steerX, steerY);
+                    const moodMult = this.getMoodParams().separation;
+                    return limit(nx * params.maxSpeed - this.vx, ny * params.maxSpeed - this.vy, params.maxForce * moodMult);
+                }
+                return [0, 0];
+            }
+
+            alignment(neighbors) {
+                if (!toggles.alignment || neighbors.length === 0) return [0, 0];
+                let avgVx = 0, avgVy = 0;
+                let count = 0;
+
+                for (const { entity, dist } of neighbors) {
+                    if (dist < params.perceptionRadius) {
+                        avgVx += entity.vx;
+                        avgVy += entity.vy;
+                        count++;
+                    }
+                }
+
+                if (count > 0) {
+                    avgVx /= count;
+                    avgVy /= count;
+                    const [nx, ny] = normalize(avgVx, avgVy);
+                    const moodMult = this.getMoodParams().alignment;
+                    return limit(nx * params.maxSpeed - this.vx, ny * params.maxSpeed - this.vy, params.maxForce * moodMult);
+                }
+                return [0, 0];
+            }
+
+            cohesion(neighbors) {
+                if (!toggles.cohesion || neighbors.length === 0) return [0, 0];
+                let centerX = 0, centerY = 0;
+                let count = 0;
+
+                for (const { entity, dist } of neighbors) {
+                    if (dist < params.perceptionRadius) {
+                        centerX += entity.x;
+                        centerY += entity.y;
+                        count++;
+                    }
+                }
+
+                if (count > 0) {
+                    centerX /= count;
+                    centerY /= count;
+                    const dx = centerX - this.x;
+                    const dy = centerY - this.y;
+                    const [nx, ny] = normalize(dx, dy);
+                    const moodMult = this.getMoodParams().cohesion;
+                    return limit(nx * params.maxSpeed - this.vx, ny * params.maxSpeed - this.vy, params.maxForce * moodMult);
+                }
+                return [0, 0];
+            }
+
+            boundaryAvoidance() {
+                let steerX = 0, steerY = 0;
+                const margin = params.boundaryMargin;
+                const force = params.boundaryForce;
+
+                if (this.x < margin) steerX = force * (1 - this.x / margin);
+                if (this.x > canvas.width - margin) steerX = -force * (1 - (canvas.width - this.x) / margin);
+                if (this.y < margin) steerY = force * (1 - this.y / margin);
+                if (this.y > canvas.height - margin) steerY = -force * (1 - (canvas.height - this.y) / margin);
+
+                return [steerX, steerY];
+            }
+
+            waterCurrent() {
+                if (!toggles.current) return [0, 0];
+                const noise = Math.sin(this.x * 0.01 + Date.now() * 0.001) * 0.5;
+                const angle = params.currentAngle + noise;
+                return [Math.cos(angle) * params.currentStrength, Math.sin(angle) * params.currentStrength];
+            }
+
+            seekFood() {
+                if (food.length === 0) return [0, 0];
+                let closest = null;
+                let closestDist = Infinity;
+
+                for (const f of food) {
+                    const dist = Math.hypot(f.x - this.x, f.y - this.y);
+                    if (dist < params.perceptionRadius * 2 && dist < closestDist) {
+                        closest = f;
+                        closestDist = dist;
+                    }
+                }
+
+                if (closest) {
+                    if (closestDist < 10) {
+                        this.energy = Math.min(1, this.energy + 0.1);
+                        food.splice(food.indexOf(closest), 1);
+                        return [0, 0];
+                    }
+                    const dx = closest.x - this.x;
+                    const dy = closest.y - this.y;
+                    const [nx, ny] = normalize(dx, dy);
+                    return limit(nx * params.foodAttractionStrength, ny * params.foodAttractionStrength, params.maxForce * 2);
+                }
+                return [0, 0];
+            }
+
+            fleePredators() {
+                if (!toggles.predators || predators.length === 0) return [0, 0];
+                let steerX = 0, steerY = 0;
+                let threatened = false;
+
+                for (const p of predators) {
+                    const dist = Math.hypot(p.x - this.x, p.y - this.y);
+                    if (dist < params.predatorFearRadius) {
+                        const dx = this.x - p.x;
+                        const dy = this.y - p.y;
+                        const weight = 1 - dist / params.predatorFearRadius;
+                        steerX += dx * weight;
+                        steerY += dy * weight;
+                        threatened = true;
+                    }
+                }
+
+                if (threatened) {
+                    this.targetMood = MOOD.PANICKED;
+                    const [nx, ny] = normalize(steerX, steerY);
+                    return limit(nx * params.predatorFearStrength, ny * params.predatorFearStrength, params.maxForce * 3);
+                }
+                return [0, 0];
+            }
+
+            fleeScarePulses() {
+                let steerX = 0, steerY = 0;
+                let scared = false;
+
+                for (const pulse of scarePulses) {
+                    const dist = Math.hypot(pulse.x - this.x, pulse.y - this.y);
+                    if (dist < pulse.radius) {
+                        const dx = this.x - pulse.x;
+                        const dy = this.y - pulse.y;
+                        const weight = (1 - dist / pulse.radius) * pulse.strength;
+                        steerX += dx * weight;
+                        steerY += dy * weight;
+                        scared = true;
+                    }
+                }
+
+                if (scared) {
+                    this.targetMood = MOOD.PANICKED;
+                    const [nx, ny] = normalize(steerX, steerY);
+                    return [nx * params.maxForce * 2, ny * params.maxForce * 2];
+                }
+                return [0, 0];
+            }
+
+            updateMood() {
+                if (moodOverride) {
+                    this.targetMood = moodOverride;
+                } else if (this.mood === MOOD.PANICKED && this.targetMood === MOOD.PANICKED) {
+                    if (Math.random() < 0.01) this.targetMood = MOOD.ALERT;
+                } else if (this.mood === MOOD.ALERT && this.targetMood === MOOD.ALERT) {
+                    if (Math.random() < 0.005) this.targetMood = MOOD.CALM;
+                }
+
+                if (this.mood !== this.targetMood) {
+                    this.moodTransition += 0.02;
+                    if (this.moodTransition >= 1) {
+                        this.mood = this.targetMood;
+                        this.moodTransition = 0;
+                    }
+                }
+            }
+
+            update(neighbors) {
+                this.forceVectors = [];
+                this.ax = 0;
+                this.ay = 0;
+
+                // Calculate forces
+                const [sepX, sepY] = this.separation(neighbors);
+                const [aliX, aliY] = this.alignment(neighbors);
+                const [cohX, cohY] = this.cohesion(neighbors);
+                const [boundX, boundY] = this.boundaryAvoidance();
+                const [currX, currY] = this.waterCurrent();
+                const [foodX, foodY] = this.seekFood();
+                const [predX, predY] = this.fleePredators();
+                const [scareX, scareY] = this.fleeScarePulses();
+
+                // Apply weighted forces
+                this.applyForce(sepX * params.separationWeight, sepY * params.separationWeight, 'sep');
+                this.applyForce(aliX * params.alignmentWeight, aliY * params.alignmentWeight, 'ali');
+                this.applyForce(cohX * params.cohesionWeight, cohY * params.cohesionWeight, 'coh');
+                this.applyForce(boundX, boundY, 'bound');
+                this.applyForce(currX, currY, 'curr');
+                this.applyForce(foodX, foodY, 'food');
+                this.applyForce(predX, predY, 'pred');
+                this.applyForce(scareX, scareY, 'scare');
+
+                // Update mood
+                this.updateMood();
+
+                // Apply acceleration to velocity
+                this.vx += this.ax;
+                this.vy += this.ay;
+
+                // Apply drag
+                this.vx *= params.drag;
+                this.vy *= params.drag;
+
+                // Limit speed based on mood
+                const speedMult = this.getMoodParams().speedMult;
+                [this.vx, this.vy] = limit(this.vx, this.vy, params.maxSpeed * speedMult);
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wrap around (soft boundary already handles this mostly)
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+
+                // Energy decay
+                this.energy = Math.max(0, this.energy - 0.0001);
+            }
+
+            draw() {
+                const angle = Math.atan2(this.vy, this.vx);
+                const colors = MOOD_COLORS[this.mood];
+                const size = this.size * (0.8 + this.energy * 0.4);
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(angle);
+
+                // Body
+                ctx.beginPath();
+                ctx.moveTo(size, 0);
+                ctx.lineTo(-size * 0.7, size * 0.4);
+                ctx.lineTo(-size * 0.4, 0);
+                ctx.lineTo(-size * 0.7, -size * 0.4);
+                ctx.closePath();
+                ctx.fillStyle = colors.body;
+                ctx.fill();
+
+                // Tail
+                ctx.beginPath();
+                ctx.moveTo(-size * 0.4, 0);
+                ctx.lineTo(-size, size * 0.5);
+                ctx.lineTo(-size, -size * 0.5);
+                ctx.closePath();
+                ctx.fillStyle = colors.fin;
+                ctx.fill();
+
+                // Eye
+                ctx.beginPath();
+                ctx.arc(size * 0.3, -size * 0.1, size * 0.12, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(size * 0.35, -size * 0.1, size * 0.06, 0, Math.PI * 2);
+                ctx.fillStyle = '#000';
+                ctx.fill();
+
+                ctx.restore();
+
+                // Debug: Perception radius
+                if (toggles.showPerception) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, params.perceptionRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(100, 200, 255, 0.2)';
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, params.separationRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255, 100, 100, 0.3)';
+                    ctx.stroke();
+                }
+
+                // Debug: Force vectors
+                if (toggles.showForces) {
+                    for (const fv of this.forceVectors) {
+                        ctx.beginPath();
+                        ctx.moveTo(this.x, this.y);
+                        ctx.lineTo(this.x + fv.fx, this.y + fv.fy);
+                        ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Predator Class
+        class Predator {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                this.vx = Math.cos(angle) * 1.5;
+                this.vy = Math.sin(angle) * 1.5;
+                this.size = 25;
+            }
+
+            update() {
+                // Simple wandering behavior
+                this.vx += (Math.random() - 0.5) * 0.1;
+                this.vy += (Math.random() - 0.5) * 0.1;
+                [this.vx, this.vy] = limit(this.vx, this.vy, 2);
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Boundary avoidance
+                const margin = 100;
+                if (this.x < margin) this.vx += 0.1;
+                if (this.x > canvas.width - margin) this.vx -= 0.1;
+                if (this.y < margin) this.vy += 0.1;
+                if (this.y > canvas.height - margin) this.vy -= 0.1;
+
+                // Wrap
+                if (this.x < -50) this.x = canvas.width + 50;
+                if (this.x > canvas.width + 50) this.x = -50;
+                if (this.y < -50) this.y = canvas.height + 50;
+                if (this.y > canvas.height + 50) this.y = -50;
+            }
+
+            draw() {
+                const angle = Math.atan2(this.vy, this.vx);
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(angle);
+
+                // Shark-like body
+                ctx.beginPath();
+                ctx.moveTo(this.size, 0);
+                ctx.lineTo(-this.size * 0.5, this.size * 0.4);
+                ctx.lineTo(-this.size * 0.3, 0);
+                ctx.lineTo(-this.size * 0.5, -this.size * 0.4);
+                ctx.closePath();
+                ctx.fillStyle = '#556677';
+                ctx.fill();
+
+                // Dorsal fin
+                ctx.beginPath();
+                ctx.moveTo(0, -this.size * 0.3);
+                ctx.lineTo(-this.size * 0.2, -this.size * 0.6);
+                ctx.lineTo(-this.size * 0.4, -this.size * 0.3);
+                ctx.closePath();
+                ctx.fillStyle = '#445566';
+                ctx.fill();
+
+                // Tail
+                ctx.beginPath();
+                ctx.moveTo(-this.size * 0.3, 0);
+                ctx.lineTo(-this.size * 0.8, this.size * 0.5);
+                ctx.lineTo(-this.size * 0.8, -this.size * 0.5);
+                ctx.closePath();
+                ctx.fillStyle = '#445566';
+                ctx.fill();
+
+                // Eye
+                ctx.beginPath();
+                ctx.arc(this.size * 0.4, -this.size * 0.15, this.size * 0.08, 0, Math.PI * 2);
+                ctx.fillStyle = '#ff3333';
+                ctx.fill();
+
+                ctx.restore();
+
+                // Fear radius visualization
+                if (toggles.showPerception) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, params.predatorFearRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(255, 50, 50, 0.2)';
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Food Particle
+        class FoodParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 4 + Math.random() * 3;
+                this.wobble = Math.random() * Math.PI * 2;
+            }
+
+            update() {
+                this.wobble += 0.05;
+                this.y += Math.sin(this.wobble) * 0.3;
+                this.y += 0.1; // Slowly sink
+                if (this.y > canvas.height + 10) {
+                    food.splice(food.indexOf(this), 1);
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = '#88ff88';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(this.x - this.size * 0.3, this.y - this.size * 0.3, this.size * 0.3, 0, Math.PI * 2);
+                ctx.fillStyle = '#aaffaa';
+                ctx.fill();
+            }
+        }
+
+        // Scare Pulse
+        class ScarePulse {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 200;
+                this.strength = 3;
+            }
+
+            update() {
+                this.radius += 8;
+                this.strength = 3 * (1 - this.radius / this.maxRadius);
+                if (this.radius > this.maxRadius) {
+                    scarePulses.splice(scarePulses.indexOf(this), 1);
+                }
+            }
+
+            draw() {
+                const alpha = 1 - this.radius / this.maxRadius;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 100, 100, ${alpha * 0.5})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        }
+
+        // Initialize
+        function init() {
+            fish = [];
+            food = [];
+            predators = [];
+            scarePulses = [];
+
+            // Spawn fish
+            for (let i = 0; i < 150; i++) {
+                fish.push(new Fish(
+                    Math.random() * canvas.width,
+                    Math.random() * canvas.height
+                ));
+            }
+
+            // Spawn predators
+            for (let i = 0; i < 2; i++) {
+                predators.push(new Predator(
+                    Math.random() * canvas.width,
+                    Math.random() * canvas.height
+                ));
+            }
+        }
+
+        // Draw Grid
+        function drawGrid() {
+            if (!toggles.showGrid) return;
+            ctx.strokeStyle = 'rgba(100, 150, 200, 0.2)';
+            ctx.lineWidth = 1;
+
+            for (let x = 0; x < canvas.width; x += CELL_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += CELL_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Show cell occupancy
+            for (const key in grid) {
+                const [cx, cy] = key.split(',').map(Number);
+                const count = grid[key].length;
+                if (count > 0) {
+                    ctx.fillStyle = `rgba(100, 200, 255, ${Math.min(count / 20, 0.3)})`;
+                    ctx.fillRect(cx * CELL_SIZE, cy * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                }
+            }
+        }
+
+        // Update UI
+        function updateUI() {
+            const moodCounts = { calm: 0, alert: 0, panicked: 0, curious: 0 };
+            for (const f of fish) moodCounts[f.mood]++;
+
+            ui.innerHTML = `
+                <b>Fish Flocking Simulation</b><br>
+                Fish: ${fish.length} | Food: ${food.length} | Predators: ${predators.length}<br>
+                <br>
+                <b>Moods:</b><br>
+                <span style="color:${MOOD_COLORS.calm.body}">Calm: ${moodCounts.calm}</span> |
+                <span style="color:${MOOD_COLORS.alert.body}">Alert: ${moodCounts.alert}</span><br>
+                <span style="color:${MOOD_COLORS.panicked.body}">Panicked: ${moodCounts.panicked}</span> |
+                <span style="color:${MOOD_COLORS.curious.body}">Curious: ${moodCounts.curious}</span><br>
+                <br>
+                <b>Behaviors:</b><br>
+                [1] Separation: ${toggles.separation ? 'ON' : 'OFF'}<br>
+                [2] Alignment: ${toggles.alignment ? 'ON' : 'OFF'}<br>
+                [3] Cohesion: ${toggles.cohesion ? 'ON' : 'OFF'}<br>
+                [4] Predators: ${toggles.predators ? 'ON' : 'OFF'}<br>
+                [5] Current: ${toggles.current ? 'ON' : 'OFF'}<br>
+                ${moodOverride ? `<br><b>Mood Override:</b> ${moodOverride.toUpperCase()}` : ''}
+            `;
+        }
+
+        // Main Loop
+        function update() {
+            if (!paused) {
+                // Update current angle over time
+                params.currentAngle = Math.sin(Date.now() * 0.0001) * Math.PI * 0.5;
+
+                // Build spatial grid
+                clearGrid();
+                for (const f of fish) addToGrid(f);
+
+                // Update fish
+                for (const f of fish) {
+                    const neighbors = getNearby(f.x, f.y, params.perceptionRadius);
+                    f.update(neighbors);
+                }
+
+                // Update predators
+                for (const p of predators) p.update();
+
+                // Update food
+                for (const f of food) f.update();
+
+                // Update scare pulses
+                for (const s of scarePulses) s.update();
+            }
+
+            // Draw
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Water background gradient already in CSS
+
+            drawGrid();
+
+            // Draw food
+            for (const f of food) f.draw();
+
+            // Draw fish
+            for (const f of fish) f.draw();
+
+            // Draw predators
+            for (const p of predators) p.draw();
+
+            // Draw scare pulses
+            for (const s of scarePulses) s.draw();
+
+            updateUI();
+            requestAnimationFrame(update);
+        }
+
+        // Input Handlers
+        document.addEventListener('keydown', (e) => {
+            switch (e.key.toLowerCase()) {
+                case ' ':
+                    paused = !paused;
+                    pausedDisplay.style.display = paused ? 'block' : 'none';
+                    e.preventDefault();
+                    break;
+                case 'r':
+                    init();
+                    break;
+                case 'n':
+                    for (let i = 0; i < 10; i++) {
+                        fish.push(new Fish(Math.random() * canvas.width, Math.random() * canvas.height));
+                    }
+                    break;
+                case 'm':
+                    for (let i = 0; i < 10 && fish.length > 10; i++) {
+                        fish.pop();
+                    }
+                    break;
+                case '1':
+                    toggles.separation = !toggles.separation;
+                    break;
+                case '2':
+                    toggles.alignment = !toggles.alignment;
+                    break;
+                case '3':
+                    toggles.cohesion = !toggles.cohesion;
+                    break;
+                case '4':
+                    toggles.predators = !toggles.predators;
+                    break;
+                case '5':
+                    toggles.current = !toggles.current;
+                    break;
+                case 'q':
+                    moodOverride = moodOverride === MOOD.CALM ? null : MOOD.CALM;
+                    break;
+                case 'w':
+                    moodOverride = moodOverride === MOOD.ALERT ? null : MOOD.ALERT;
+                    break;
+                case 'e':
+                    moodOverride = moodOverride === MOOD.PANICKED ? null : MOOD.PANICKED;
+                    break;
+                case 't':
+                    moodOverride = moodOverride === MOOD.CURIOUS ? null : MOOD.CURIOUS;
+                    break;
+                case 'd':
+                    toggles.showPerception = !toggles.showPerception;
+                    break;
+                case 'f':
+                    toggles.showForces = !toggles.showForces;
+                    break;
+                case 'g':
+                    toggles.showGrid = !toggles.showGrid;
+                    break;
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            // Spawn food at click location
+            for (let i = 0; i < 5; i++) {
+                food.push(new FoodParticle(
+                    e.clientX + (Math.random() - 0.5) * 30,
+                    e.clientY + (Math.random() - 0.5) * 30
+                ));
+            }
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            // Create scare pulse
+            scarePulses.push(new ScarePulse(e.clientX, e.clientY));
+        });
+
+        // Start
+        init();
+        update();
+    </script>
+</body>
+</html>
