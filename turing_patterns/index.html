@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turing Patterns Simulation</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+    <!-- ================================================================ -->
+    <!-- Top Toolbar                                                      -->
+    <!-- ================================================================ -->
+    <div id="toolbar">
+        <div class="toolbar-group">
+            <button id="btn-play" class="btn btn-icon" title="Play (Space)">&#9654;</button>
+            <button id="btn-step" class="btn btn-icon" title="Step Forward (.)">&#9197;</button>
+            <button id="btn-reset" class="btn btn-icon" title="Reset (R)">&#8634;</button>
+        </div>
+
+        <div class="toolbar-separator"></div>
+
+        <div class="toolbar-group">
+            <span class="toolbar-label">Model:</span>
+            <select id="sel-model" style="width:150px;">
+                <option value="0">Gray-Scott</option>
+                <option value="1">FitzHugh-Nagumo</option>
+                <option value="2">Gierer-Meinhardt</option>
+            </select>
+        </div>
+
+        <div class="toolbar-separator"></div>
+
+        <div class="toolbar-group">
+            <span class="toolbar-label">Grid:</span>
+            <select id="sel-gridsize" style="width:80px;">
+                <option value="128">128</option>
+                <option value="256">256</option>
+                <option value="512" selected>512</option>
+                <option value="768">768</option>
+                <option value="1024">1024</option>
+            </select>
+        </div>
+
+        <div class="toolbar-separator"></div>
+
+        <div class="toolbar-group">
+            <span class="toolbar-label">Boundary:</span>
+            <select id="sel-boundary" style="width:100px;">
+                <option value="0">Wrap</option>
+                <option value="1">Reflect</option>
+                <option value="2">Fixed</option>
+            </select>
+        </div>
+
+        <div class="toolbar-spacer"></div>
+
+        <div class="toolbar-group">
+            <button id="btn-export-png" class="btn" title="Export PNG">&#128247; PNG</button>
+            <button id="btn-help" class="btn btn-icon" title="Help (H)">?</button>
+            <button id="btn-toggle-panel" class="btn btn-icon" title="Toggle Panel (P)">&#9776;</button>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- Main Content Area                                                -->
+    <!-- ================================================================ -->
+    <div id="main-area">
+
+        <!-- Canvas -->
+        <div id="canvas-container">
+            <canvas id="sim-canvas"></canvas>
+            <div id="brush-cursor"></div>
+        </div>
+
+        <!-- Side Panel -->
+        <div id="side-panel">
+
+            <!-- Parameters Section -->
+            <div class="panel-section">
+                <div class="panel-header">
+                    <span>Parameters</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="panel-body">
+                    <div class="control-row">
+                        <span class="control-label" title="Diffusion rate of activator chemical">D<sub>u</sub></span>
+                        <input type="range" id="slider-du" min="0.05" max="2.0" step="0.001" value="1.0">
+                        <span class="control-value" id="val-du">1.000</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label" title="Diffusion rate of inhibitor chemical">D<sub>v</sub></span>
+                        <input type="range" id="slider-dv" min="0.01" max="2.0" step="0.001" value="0.5">
+                        <span class="control-value" id="val-dv">0.500</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label" title="Feed rate: rate of chemical replenishment">Feed</span>
+                        <input type="range" id="slider-feed" min="0.001" max="0.12" step="0.0001" value="0.055">
+                        <span class="control-value" id="val-feed">0.0550</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label" title="Kill rate: rate of chemical removal">Kill</span>
+                        <input type="range" id="slider-kill" min="0.001" max="0.12" step="0.0001" value="0.062">
+                        <span class="control-value" id="val-kill">0.0620</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label" title="Time step size per iteration">dt</span>
+                        <input type="range" id="slider-dt" min="0.01" max="2.0" step="0.01" value="1.0">
+                        <span class="control-value" id="val-dt">1.00</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label" title="Simulation steps computed per animation frame">Speed</span>
+                        <input type="range" id="slider-speed" min="1" max="32" step="1" value="8">
+                        <span class="control-value" id="val-speed">8</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Drawing Tools Section -->
+            <div class="panel-section">
+                <div class="panel-header">
+                    <span>Drawing Tools</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="panel-body">
+                    <div class="tool-group">
+                        <button class="tool-btn active" data-tool="0" title="Paint Activator (1)">&#127912;</button>
+                        <button class="tool-btn" data-tool="1" title="Paint Inhibitor (2)">&#128308;</button>
+                        <button class="tool-btn" data-tool="2" title="Eraser (3)">&#128301;</button>
+                        <button class="tool-btn" data-tool="3" title="Place Obstacle (4)">&#9632;</button>
+                        <button class="tool-btn" data-tool="4" title="Remove Obstacle">&#9633;</button>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Size</span>
+                        <input type="range" id="slider-brush-size" min="0.005" max="0.15" step="0.001" value="0.03">
+                        <span class="control-value" id="val-brush-size">0.030</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Strength</span>
+                        <input type="range" id="slider-brush-strength" min="0.1" max="1.0" step="0.01" value="0.8">
+                        <span class="control-value" id="val-brush-strength">0.80</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seeding Section -->
+            <div class="panel-section">
+                <div class="panel-header">
+                    <span>Initial Conditions</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="panel-body">
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                        <button id="btn-seed-center" class="btn" title="Place a seed in the center">Center</button>
+                        <button id="btn-seed-spots" class="btn" title="Random spot seeds">Spots</button>
+                        <button id="btn-seed-noise" class="btn" title="Random noise everywhere">Noise</button>
+                        <button id="btn-seed-clear" class="btn" title="Clear all chemicals">Clear</button>
+                    </div>
+                    <div class="control-row" style="margin-top:4px;">
+                        <span class="control-label">Seed</span>
+                        <input type="number" id="input-seed" value="12345" style="width:80px;">
+                        <button id="btn-random-seed" class="btn btn-icon" title="Random seed">&#127922;</button>
+                    </div>
+                    <div style="margin-top:4px;">
+                        <label class="btn" style="cursor:pointer;">
+                            &#128444; Load Image
+                            <input type="file" id="input-image" accept="image/*" style="display:none;">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Presets Section -->
+            <div class="panel-section">
+                <div class="panel-header">
+                    <span>Presets</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="panel-body">
+                    <div id="preset-grid" class="preset-grid"></div>
+                    <button id="btn-random-params" class="btn" style="width:100%;margin-top:6px;">&#127922; Random Parameters</button>
+                </div>
+            </div>
+
+            <!-- Visual Section -->
+            <div class="panel-section">
+                <div class="panel-header">
+                    <span>Visual</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="panel-body">
+                    <div class="control-row">
+                        <span class="control-label">Color</span>
+                        <select id="sel-colorscheme" style="flex:1;">
+                            <option value="0">Heat Map</option>
+                            <option value="1">Neon</option>
+                            <option value="2">Grayscale</option>
+                            <option value="3">Inverted</option>
+                            <option value="4">Ocean</option>
+                            <option value="5">Forest</option>
+                            <option value="6">Sunset</option>
+                            <option value="7">Plasma</option>
+                            <option value="8">Custom</option>
+                        </select>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Bright</span>
+                        <input type="range" id="slider-brightness" min="-0.5" max="0.5" step="0.01" value="0">
+                        <span class="control-value" id="val-brightness">0.00</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Contrast</span>
+                        <input type="range" id="slider-contrast" min="0.2" max="3.0" step="0.01" value="1.0">
+                        <span class="control-value" id="val-contrast">1.00</span>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Satur.</span>
+                        <input type="range" id="slider-saturation" min="0" max="2.0" step="0.01" value="1.0">
+                        <span class="control-value" id="val-saturation">1.00</span>
+                    </div>
+
+                    <!-- Custom gradient -->
+                    <div id="gradient-preview" class="gradient-preview" style="display:none;"></div>
+                    <div id="custom-color-stops" class="gradient-stops" style="display:none;"></div>
+                </div>
+            </div>
+
+            <!-- Post-Processing Section -->
+            <div class="panel-section">
+                <div class="panel-header">
+                    <span>Post-Processing</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="panel-body">
+                    <div class="toggle-row">
+                        <span class="control-label">Bloom/Glow</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggle-bloom">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Strength</span>
+                        <input type="range" id="slider-bloom-strength" min="0.05" max="1.5" step="0.01" value="0.3">
+                        <span class="control-value" id="val-bloom-strength">0.30</span>
+                    </div>
+                    <div class="toggle-row" style="margin-top:6px;">
+                        <span class="control-label">Edge Detect</span>
+                        <label class="toggle">
+                            <input type="checkbox" id="toggle-edge">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="control-row">
+                        <span class="control-label">Strength</span>
+                        <input type="range" id="slider-edge-strength" min="0.1" max="2.0" step="0.01" value="0.5">
+                        <span class="control-value" id="val-edge-strength">0.50</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save / Load Section -->
+            <div class="panel-section">
+                <div class="panel-header">
+                    <span>Save / Load</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="panel-body">
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                        <button id="btn-save-state" class="btn">&#128190; Save File</button>
+                        <button id="btn-load-state" class="btn">&#128194; Load File</button>
+                        <button id="btn-quick-save" class="btn">&#9733; Quick Save</button>
+                    </div>
+                    <div id="saves-list" class="save-list" style="margin-top:8px;">
+                        <div style="color:var(--text-muted);font-size:11px;">No saves yet</div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /side-panel -->
+    </div><!-- /main-area -->
+
+    <!-- ================================================================ -->
+    <!-- Status Bar                                                       -->
+    <!-- ================================================================ -->
+    <div id="status-bar">
+        <div class="status-item">
+            <span class="status-label">FPS:</span>
+            <span class="status-value" id="stat-fps">0</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Iteration:</span>
+            <span class="status-value" id="stat-iteration">0</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Coverage:</span>
+            <span class="status-value" id="stat-coverage">0%</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">Entropy:</span>
+            <span class="status-value" id="stat-entropy">0</span>
+        </div>
+        <div class="status-item">
+            <span class="status-value recording-indicator" id="recording-status" style="display:none;"></span>
+        </div>
+    </div>
+
+</div><!-- /app -->
+
+<!-- ================================================================ -->
+<!-- Help Overlay                                                      -->
+<!-- ================================================================ -->
+<div id="help-overlay">
+    <div class="help-content">
+        <h2>Turing Patterns Simulation</h2>
+        <p>Explore the fascinating world of reaction-diffusion systems that produce natural patterns found in animal skins, seashells, and chemical reactions.</p>
+
+        <h3>What are Turing Patterns?</h3>
+        <p>In 1952, Alan Turing proposed that patterns in nature (spots, stripes, spirals) can emerge from the interaction of two chemicals diffusing and reacting together. This simulation lets you explore these systems interactively.</p>
+
+        <h3>Models</h3>
+        <ul>
+            <li><strong>Gray-Scott</strong> &mdash; The most versatile model. Two chemicals (U and V) with feed and kill rates control pattern formation. Small changes create dramatically different patterns.</li>
+            <li><strong>FitzHugh-Nagumo</strong> &mdash; Originally a model for nerve impulse propagation. Creates excitable waves and spiral patterns.</li>
+            <li><strong>Gierer-Meinhardt</strong> &mdash; An activator-inhibitor system that models biological pattern formation.</li>
+        </ul>
+
+        <h3>Key Parameters</h3>
+        <ul>
+            <li><strong>D<sub>u</sub> / D<sub>v</sub></strong> &mdash; Diffusion rates. The ratio matters more than absolute values. Typically D<sub>u</sub> &gt; D<sub>v</sub>.</li>
+            <li><strong>Feed (F)</strong> &mdash; Rate at which chemical U is replenished. Higher = more reactive.</li>
+            <li><strong>Kill (k)</strong> &mdash; Rate at which chemical V is removed. Controls pattern stability.</li>
+            <li><strong>dt</strong> &mdash; Time step size. Smaller = more accurate but slower.</li>
+        </ul>
+
+        <h3>Keyboard Shortcuts</h3>
+        <ul>
+            <li><kbd>Space</kbd> &mdash; Play / Pause</li>
+            <li><kbd>.</kbd> &mdash; Step forward</li>
+            <li><kbd>R</kbd> &mdash; Reset simulation</li>
+            <li><kbd>1-4</kbd> &mdash; Select drawing tools</li>
+            <li><kbd>[</kbd> / <kbd>]</kbd> &mdash; Decrease / Increase brush size</li>
+            <li><kbd>P</kbd> &mdash; Toggle side panel</li>
+            <li><kbd>H</kbd> &mdash; Show this help</li>
+            <li><kbd>Esc</kbd> &mdash; Close help</li>
+        </ul>
+
+        <h3>Tips</h3>
+        <ul>
+            <li>Start with a preset and let it run. Patterns emerge over hundreds of iterations.</li>
+            <li>Click on the canvas to inject chemicals and create seeds for new patterns.</li>
+            <li>Tiny changes to Feed and Kill can produce completely different patterns.</li>
+            <li>Use the Random Parameters button to discover interesting parameter combinations.</li>
+            <li>Place obstacles to create barriers that patterns flow around.</li>
+        </ul>
+
+        <div class="help-close">
+            <button id="btn-close-help" class="btn btn-primary">Got it!</button>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts (order matters: dependencies first) -->
+<script src="js/shaders.js"></script>
+<script src="js/presets.js"></script>
+<script src="js/simulation.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/interaction.js"></script>
+<script src="js/app.js"></script>
+
+<!-- Show/hide custom gradient UI based on color scheme selection -->
+<script>
+    document.getElementById('sel-colorscheme').addEventListener('change', function() {
+        const isCustom = this.value === '8';
+        document.getElementById('gradient-preview').style.display = isCustom ? 'block' : 'none';
+        document.getElementById('custom-color-stops').style.display = isCustom ? 'flex' : 'none';
+    });
+</script>
+</body>
+</html>
