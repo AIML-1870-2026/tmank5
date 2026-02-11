@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Julia ∞ — Set Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Playfair+Display:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    /* === RESET & BASE === */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #e8e8e8;
+      font-family: 'Inter', system-ui, sans-serif;
+      font-weight: 300;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* === LAYOUT === */
+    #app {
+      width: 100%; height: 100%;
+      position: relative;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    #app.loaded { opacity: 1; }
+
+    /* === CANVAS === */
+    #mainCanvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      cursor: crosshair;
+      display: block;
+    }
+    #mainCanvas.grabbing { cursor: grabbing; }
+
+    /* === TOP BAR === */
+    #topBar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+      z-index: 10;
+      pointer-events: none;
+    }
+    #topBar > * { pointer-events: auto; }
+    .title-group { display: flex; flex-direction: column; gap: 2px; }
+    .title {
+      font-family: 'Playfair Display', serif;
+      font-weight: 300;
+      font-size: 18px;
+      letter-spacing: 0.3em;
+      color: #e8e8e8;
+    }
+    .subtitle {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 10px;
+      color: #888;
+      letter-spacing: 0.05em;
+    }
+    .top-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .top-btn {
+      background: rgba(13,13,13,0.8);
+      border: 1px solid #1a1a1a;
+      color: #e8e8e8;
+      padding: 6px 14px;
+      font-size: 11px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: background 0.15s, border-color 0.15s;
+      text-transform: uppercase;
+    }
+    .top-btn:hover {
+      background: rgba(255,255,255,0.05);
+      border-color: #333;
+    }
+    .top-btn.active {
+      border-color: #c8a84b;
+      color: #c8a84b;
+    }
+    .icon-btn {
+      background: rgba(13,13,13,0.8);
+      border: 1px solid #1a1a1a;
+      color: #e8e8e8;
+      width: 34px; height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .icon-btn:hover {
+      background: rgba(255,255,255,0.05);
+      border-color: #333;
+    }
+
+    /* === MINI MAP === */
+    #miniMapContainer {
+      position: absolute;
+      bottom: 110px;
+      right: 16px;
+      width: 200px;
+      height: 200px;
+      border: 1px solid #1a1a1a;
+      background: #0d0d0d;
+      z-index: 10;
+      overflow: hidden;
+    }
+    #miniMapCanvas {
+      width: 100%; height: 100%;
+      cursor: crosshair;
+      display: block;
+    }
+    .minimap-label {
+      position: absolute;
+      bottom: 4px; left: 0; right: 0;
+      text-align: center;
+      font-size: 9px;
+      color: #555;
+      letter-spacing: 0.08em;
+      font-style: italic;
+      pointer-events: none;
+    }
+    #miniMapCrosshair {
+      position: absolute;
+      width: 10px; height: 10px;
+      border: 1px solid #c8a84b;
+      border-radius: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 6px rgba(200,168,75,0.4);
+    }
+
+    /* === PRESET STRIP === */
+    #presetStrip {
+      position: absolute;
+      bottom: 52px;
+      left: 16px;
+      right: 230px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      z-index: 10;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      padding: 4px 0;
+    }
+    #presetStrip::-webkit-scrollbar { display: none; }
+    .preset-chip {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(13,13,13,0.85);
+      border: 1px solid #1a1a1a;
+      color: #aaa;
+      padding: 5px 12px 5px 6px;
+      font-size: 10px;
+      font-variant: small-caps;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .preset-chip:hover {
+      border-color: #333;
+      color: #e8e8e8;
+    }
+    .preset-chip.active {
+      border-color: #c8a84b;
+      color: #c8a84b;
+    }
+    .preset-thumb {
+      width: 28px; height: 28px;
+      border: 1px solid #222;
+      image-rendering: pixelated;
+    }
+
+    /* === BOTTOM BAR === */
+    #bottomBar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+      z-index: 10;
+      pointer-events: none;
+    }
+    #bottomBar > * { pointer-events: auto; }
+    .bottom-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .drift-btn {
+      background: rgba(13,13,13,0.85);
+      border: 1px solid #1a1a1a;
+      color: #e8e8e8;
+      padding: 7px 20px;
+      font-size: 12px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 400;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      transition: all 0.15s;
+    }
+    .drift-btn:hover {
+      border-color: #333;
+    }
+    .drift-btn.playing {
+      border-color: #c8a84b;
+      color: #c8a84b;
+    }
+    .speed-label {
+      font-size: 10px;
+      color: #555;
+      margin-left: 4px;
+    }
+    #speedSlider {
+      width: 80px;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 2px;
+      background: #333;
+      outline: none;
+      cursor: pointer;
+    }
+    #speedSlider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #c8a84b;
+      cursor: pointer;
+    }
+    .bottom-right-group {
+      position: absolute;
+      right: 16px;
+      display: flex;
+      gap: 6px;
+    }
+
+    /* === SIDE PANEL === */
+    #sidePanel {
+      position: absolute;
+      top: 0; right: 0;
+      width: 280px;
+      height: 100%;
+      background: rgba(10,10,10,0.95);
+      border-left: 1px solid #1a1a1a;
+      z-index: 20;
+      transform: translateX(100%);
+      transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+      overflow-y: auto;
+      padding: 60px 20px 20px;
+      scrollbar-width: thin;
+      scrollbar-color: #333 transparent;
+    }
+    #sidePanel.open { transform: translateX(0); }
+    .panel-section {
+      margin-bottom: 24px;
+    }
+    .panel-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: #555;
+      margin-bottom: 8px;
+    }
+    .panel-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .panel-row label {
+      font-size: 11px;
+      color: #888;
+    }
+    .panel-slider {
+      width: 140px;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 2px;
+      background: #333;
+      outline: none;
+      cursor: pointer;
+    }
+    .panel-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #888;
+      cursor: pointer;
+    }
+    .panel-slider::-webkit-slider-thumb:hover { background: #c8a84b; }
+    .panel-input {
+      width: 80px;
+      background: #111;
+      border: 1px solid #222;
+      color: #e8e8e8;
+      padding: 4px 6px;
+      font-size: 11px;
+      font-family: 'SF Mono', monospace;
+      text-align: right;
+    }
+    .panel-input:focus {
+      outline: none;
+      border-color: #c8a84b;
+    }
+    .panel-select {
+      background: #111;
+      border: 1px solid #222;
+      color: #e8e8e8;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+    }
+    .panel-select:focus { outline: none; border-color: #c8a84b; }
+    .panel-close {
+      position: absolute;
+      top: 16px; right: 16px;
+      background: none;
+      border: none;
+      color: #555;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .panel-close:hover { color: #e8e8e8; }
+
+    /* === TOAST === */
+    #toast {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(13,13,13,0.95);
+      border: 1px solid #c8a84b;
+      color: #c8a84b;
+      padding: 8px 20px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 100;
+      pointer-events: none;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* === PALETTE DROPDOWN === */
+    .palette-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .palette-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: rgba(13,13,13,0.95);
+      border: 1px solid #1a1a1a;
+      z-index: 30;
+      min-width: 140px;
+    }
+    .palette-menu.open { display: block; }
+    .palette-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: #aaa;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .palette-option:hover { background: rgba(255,255,255,0.05); color: #e8e8e8; }
+    .palette-option.active { color: #c8a84b; }
+    .palette-swatch {
+      width: 24px; height: 10px;
+      border: 1px solid #333;
+    }
+
+    /* === MODE DROPDOWN === */
+    .mode-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .mode-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: rgba(13,13,13,0.95);
+      border: 1px solid #1a1a1a;
+      z-index: 30;
+      min-width: 160px;
+    }
+    .mode-menu.open { display: block; }
+    .mode-option {
+      padding: 8px 12px;
+      font-size: 11px;
+      color: #aaa;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .mode-option:hover { background: rgba(255,255,255,0.05); color: #e8e8e8; }
+    .mode-option.active { color: #c8a84b; }
+
+    /* === ANIMATION MODE DROPDOWN === */
+    .anim-mode-select {
+      display: flex;
+      gap: 4px;
+    }
+    .anim-mode-btn {
+      background: rgba(13,13,13,0.85);
+      border: 1px solid #1a1a1a;
+      color: #888;
+      padding: 4px 10px;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .anim-mode-btn:hover { border-color: #333; color: #e8e8e8; }
+    .anim-mode-btn.active { border-color: #c8a84b; color: #c8a84b; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="mainCanvas"></canvas>
+
+    <!-- Top Bar -->
+    <div id="topBar">
+      <div class="title-group">
+        <div class="title">JULIA &#8734;</div>
+        <div class="subtitle" id="cDisplay">c = -0.7269 + 0.1889i</div>
+      </div>
+      <div class="top-controls">
+        <div class="palette-dropdown">
+          <button class="top-btn" id="paletteBtn" title="Color Palette (1-5)">ABYSSAL</button>
+          <div class="palette-menu" id="paletteMenu">
+            <div class="palette-option active" data-palette="0">
+              <canvas class="palette-swatch" data-p="0" width="24" height="10"></canvas>
+              Abyssal
+            </div>
+            <div class="palette-option" data-palette="1">
+              <canvas class="palette-swatch" data-p="1" width="24" height="10"></canvas>
+              Aurora
+            </div>
+            <div class="palette-option" data-palette="2">
+              <canvas class="palette-swatch" data-p="2" width="24" height="10"></canvas>
+              Magma
+            </div>
+            <div class="palette-option" data-palette="3">
+              <canvas class="palette-swatch" data-p="3" width="24" height="10"></canvas>
+              Pearl
+            </div>
+            <div class="palette-option" data-palette="4">
+              <canvas class="palette-swatch" data-p="4" width="24" height="10"></canvas>
+              Celestial
+            </div>
+          </div>
+        </div>
+        <div class="mode-dropdown">
+          <button class="top-btn" id="modeBtn" title="Coloring Mode">GRADIENT</button>
+          <div class="mode-menu" id="modeMenu">
+            <div class="mode-option active" data-mode="0">Smooth Gradient</div>
+            <div class="mode-option" data-mode="1">Orbit Trap</div>
+            <div class="mode-option" data-mode="2">Distance Estimation</div>
+          </div>
+        </div>
+        <button class="icon-btn" id="settingsBtn" title="Settings Panel">&#9881;</button>
+      </div>
+    </div>
+
+    <!-- Mini Map -->
+    <div id="miniMapContainer">
+      <canvas id="miniMapCanvas" width="400" height="400"></canvas>
+      <div id="miniMapCrosshair"></div>
+      <div class="minimap-label">Drag to explore c-space</div>
+    </div>
+
+    <!-- Preset Strip -->
+    <div id="presetStrip"></div>
+
+    <!-- Bottom Bar -->
+    <div id="bottomBar">
+      <div class="bottom-group">
+        <div class="anim-mode-select">
+          <button class="anim-mode-btn active" data-anim="orbit" title="Orbit mode">ORBIT</button>
+          <button class="anim-mode-btn" data-anim="path" title="Path mode">PATH</button>
+        </div>
+        <button class="drift-btn" id="driftBtn" title="Play/Pause Drift (Space)">&#9654; DRIFT</button>
+        <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1" title="Animation Speed">
+        <span class="speed-label" id="speedLabel">1.0x</span>
+      </div>
+      <div class="bottom-right-group">
+        <button class="icon-btn" id="saveBtn" title="Save Screenshot (S)">&#128190;</button>
+        <button class="icon-btn" id="shareBtn" title="Share Link">&#128279;</button>
+      </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div id="sidePanel">
+      <button class="panel-close" id="panelClose">&times;</button>
+
+      <div class="panel-section">
+        <div class="panel-label">Iteration Depth</div>
+        <div class="panel-row">
+          <label id="iterLabel">256</label>
+          <input type="range" class="panel-slider" id="iterSlider" min="64" max="1024" step="8" value="256">
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-label">Coloring</div>
+        <div class="panel-row">
+          <label>Trap Shape</label>
+          <select class="panel-select" id="trapShapeSelect">
+            <option value="0">Circle</option>
+            <option value="1">Cross</option>
+          </select>
+        </div>
+        <div class="panel-row">
+          <label>Trap Radius</label>
+          <input type="range" class="panel-slider" id="trapRadiusSlider" min="0.1" max="2.0" step="0.01" value="0.5">
+        </div>
+        <div class="panel-row">
+          <label id="trapRadiusLabel">0.50</label>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-label">Julia Parameter</div>
+        <div class="panel-row">
+          <label>Re(c)</label>
+          <input type="number" class="panel-input" id="cRealInput" step="0.001" value="-0.7269">
+        </div>
+        <div class="panel-row">
+          <label>Im(c)</label>
+          <input type="number" class="panel-input" id="cImagInput" step="0.001" value="0.1889">
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-label">Animation</div>
+        <div class="panel-row">
+          <label>Orbit Radius</label>
+          <input type="range" class="panel-slider" id="orbitRadiusSlider" min="0.01" max="0.5" step="0.01" value="0.1">
+        </div>
+        <div class="panel-row">
+          <label id="orbitRadiusLabel">0.10</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast"></div>
+  </div>
+
+  <script>
+    // ============================================================
+    // SECTION 1: GLSL SHADER SOURCES
+    // ============================================================
+
+    const vertexShaderSrc = `#version 300 es
+      in vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    const buildFragmentShaderSrc = (maxIter) => `#version 300 es
+      precision highp float;
+      #define MAX_ITER ${maxIter}
+
+      uniform vec2 u_resolution;
+      uniform vec2 u_c;
+      uniform vec2 u_pan;
+      uniform float u_zoom;
+      uniform int u_color_mode;
+      uniform int u_trap_shape;
+      uniform float u_trap_radius;
+      uniform int u_palette;
+      uniform float u_time;
+
+      out vec4 fragColor;
+
+      const float PI = 3.14159265359;
+
+      // === Palette Functions ===
+      vec3 palette0(float t) { // Abyssal
+        vec3 c0 = vec3(0.02, 0.02, 0.08);
+        vec3 c1 = vec3(0.0, 0.15, 0.25);
+        vec3 c2 = vec3(0.0, 0.7, 0.65);
+        vec3 c3 = vec3(0.85, 0.75, 0.35);
+        vec3 c4 = vec3(1.0, 1.0, 1.0);
+        t = clamp(t, 0.0, 1.0);
+        if (t < 0.25) return mix(c0, c1, t / 0.25);
+        if (t < 0.5) return mix(c1, c2, (t - 0.25) / 0.25);
+        if (t < 0.75) return mix(c2, c3, (t - 0.5) / 0.25);
+        return mix(c3, c4, (t - 0.75) / 0.25);
+      }
+      vec3 palette1(float t) { // Aurora
+        vec3 c0 = vec3(0.15, 0.0, 0.2);
+        vec3 c1 = vec3(0.0, 0.5, 0.3);
+        vec3 c2 = vec3(0.0, 0.65, 0.55);
+        vec3 c3 = vec3(0.6, 0.85, 0.9);
+        vec3 c4 = vec3(1.0, 0.95, 0.9);
+        t = clamp(t, 0.0, 1.0);
+        if (t < 0.25) return mix(c0, c1, t / 0.25);
+        if (t < 0.5) return mix(c1, c2, (t - 0.25) / 0.25);
+        if (t < 0.75) return mix(c2, c3, (t - 0.5) / 0.25);
+        return mix(c3, c4, (t - 0.75) / 0.25);
+      }
+      vec3 palette2(float t) { // Magma
+        vec3 c0 = vec3(0.1, 0.05, 0.05);
+        vec3 c1 = vec3(0.45, 0.05, 0.02);
+        vec3 c2 = vec3(0.8, 0.2, 0.0);
+        vec3 c3 = vec3(1.0, 0.6, 0.1);
+        vec3 c4 = vec3(1.0, 0.9, 0.65);
+        t = clamp(t, 0.0, 1.0);
+        if (t < 0.25) return mix(c0, c1, t / 0.25);
+        if (t < 0.5) return mix(c1, c2, (t - 0.25) / 0.25);
+        if (t < 0.75) return mix(c2, c3, (t - 0.5) / 0.25);
+        return mix(c3, c4, (t - 0.75) / 0.25);
+      }
+      vec3 palette3(float t) { // Pearl
+        vec3 c0 = vec3(0.08, 0.05, 0.04);
+        vec3 c1 = vec3(0.35, 0.18, 0.2);
+        vec3 c2 = vec3(0.6, 0.4, 0.35);
+        vec3 c3 = vec3(0.85, 0.75, 0.6);
+        vec3 c4 = vec3(0.9, 0.88, 0.85);
+        t = clamp(t, 0.0, 1.0);
+        if (t < 0.25) return mix(c0, c1, t / 0.25);
+        if (t < 0.5) return mix(c1, c2, (t - 0.25) / 0.25);
+        if (t < 0.75) return mix(c2, c3, (t - 0.5) / 0.25);
+        return mix(c3, c4, (t - 0.75) / 0.25);
+      }
+      vec3 palette4(float t) { // Celestial
+        vec3 c0 = vec3(0.0, 0.0, 0.0);
+        vec3 c1 = vec3(0.15, 0.05, 0.35);
+        vec3 c2 = vec3(0.1, 0.2, 0.6);
+        vec3 c3 = vec3(0.2, 0.5, 1.0);
+        vec3 c4 = vec3(0.9, 0.95, 1.0);
+        t = clamp(t, 0.0, 1.0);
+        if (t < 0.25) return mix(c0, c1, t / 0.25);
+        if (t < 0.5) return mix(c1, c2, (t - 0.25) / 0.25);
+        if (t < 0.75) return mix(c2, c3, (t - 0.5) / 0.25);
+        return mix(c3, c4, (t - 0.75) / 0.25);
+      }
+
+      vec3 getPaletteColor(float t) {
+        if (u_palette == 0) return palette0(t);
+        if (u_palette == 1) return palette1(t);
+        if (u_palette == 2) return palette2(t);
+        if (u_palette == 3) return palette3(t);
+        return palette4(t);
+      }
+
+      // === HSV to RGB ===
+      vec3 hsv2rgb(vec3 c) {
+        vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
+        return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+      }
+
+      void main() {
+        vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / min(u_resolution.x, u_resolution.y);
+        uv = uv / u_zoom + u_pan;
+
+        vec2 z = uv;
+        vec2 dz = vec2(1.0, 0.0);
+        float smooth_i = float(MAX_ITER);
+        bool escaped = false;
+
+        // Orbit trap variables
+        float trap_dist = 1e10;
+        float trap_iter = 0.0;
+        float trap_angle = 0.0;
+
+        for (int i = 0; i < MAX_ITER; i++) {
+          float zr2 = z.x * z.x;
+          float zi2 = z.y * z.y;
+          float mag2 = zr2 + zi2;
+
+          // Distance estimation: track derivative
+          if (u_color_mode == 2) {
+            dz = 2.0 * vec2(z.x * dz.x - z.y * dz.y, z.x * dz.y + z.y * dz.x);
+          }
+
+          // Orbit trap: check distance
+          if (u_color_mode == 1) {
+            float d;
+            if (u_trap_shape == 0) {
+              d = abs(sqrt(mag2) - u_trap_radius);
+            } else {
+              d = min(abs(z.x), abs(z.y));
+            }
+            if (d < trap_dist) {
+              trap_dist = d;
+              trap_iter = float(i);
+              trap_angle = atan(z.y, z.x);
+            }
+          }
+
+          if (mag2 > 256.0) {
+            smooth_i = float(i) - log2(log2(mag2)) + 4.0;
+            escaped = true;
+            break;
+          }
+          z = vec2(zr2 - zi2 + u_c.x, 2.0 * z.x * z.y + u_c.y);
+        }
+
+        vec3 color = vec3(0.0);
+
+        if (u_color_mode == 0) {
+          // Mode A: Smooth Gradient
+          if (escaped) {
+            float t = smooth_i / float(MAX_ITER);
+            t = sqrt(t);
+            color = getPaletteColor(fract(t * 4.0 + u_time * 0.02));
+          } else {
+            float finalMag = length(z);
+            float glow = finalMag * 0.15;
+            color = getPaletteColor(0.0) * glow;
+          }
+        } else if (u_color_mode == 1) {
+          // Mode B: Orbit Trap
+          float t = trap_dist * 3.0;
+          t = clamp(t, 0.0, 1.0);
+          float hue = trap_angle / (2.0 * PI) + trap_iter / float(MAX_ITER) * 2.0;
+          float sat = 1.0 - t * 0.4;
+          float val = 1.0 - t * 0.8;
+
+          if (!escaped) {
+            val *= 0.3;
+            sat *= 0.5;
+          }
+
+          vec3 baseColor = hsv2rgb(vec3(fract(hue), sat, val));
+          // Blend with palette for richer tones
+          vec3 palColor = getPaletteColor(fract(hue));
+          color = mix(baseColor, palColor, 0.4) * val;
+
+          // Add iridescent sheen
+          float iridescence = sin(trap_dist * 20.0 + trap_angle * 3.0) * 0.1 + 0.9;
+          color *= iridescence;
+        } else {
+          // Mode C: Distance Estimation
+          if (escaped) {
+            float zMag = length(z);
+            float dzMag = length(dz);
+            float dist = 0.5 * zMag * log(zMag) / dzMag;
+
+            float glow = clamp(1.0 - dist * u_zoom * 200.0, 0.0, 1.0);
+            glow = pow(glow, 0.5);
+            color = getPaletteColor(glow * 0.8) * glow;
+            // Add bright edge
+            float edge = clamp(1.0 - dist * u_zoom * 800.0, 0.0, 1.0);
+            edge = pow(edge, 2.0);
+            color += getPaletteColor(0.9) * edge * 0.5;
+          } else {
+            float finalMag = length(z);
+            color = getPaletteColor(0.0) * finalMag * 0.1;
+          }
+        }
+
+        // Subtle vignette
+        vec2 vUv = gl_FragCoord.xy / u_resolution;
+        float vignette = 1.0 - dot(vUv - 0.5, vUv - 0.5) * 0.5;
+        color *= vignette;
+
+        fragColor = vec4(color, 1.0);
+      }
+    `;
+
+    const mandelbrotFragSrc = `#version 300 es
+      precision highp float;
+      uniform vec2 u_resolution;
+      uniform vec2 u_highlight;
+      out vec4 fragColor;
+
+      void main() {
+        vec2 uv = (gl_FragCoord.xy - u_resolution * 0.5) / min(u_resolution.x, u_resolution.y);
+        uv *= 3.2;
+        uv.x -= 0.5;
+
+        vec2 c = uv;
+        vec2 z = vec2(0.0);
+        float smooth_i = 128.0;
+
+        for (int i = 0; i < 128; i++) {
+          float mag2 = dot(z, z);
+          if (mag2 > 4.0) {
+            smooth_i = float(i) - log2(log2(mag2)) + 4.0;
+            break;
+          }
+          z = vec2(z.x*z.x - z.y*z.y + c.x, 2.0*z.x*z.y + c.y);
+        }
+
+        float t = smooth_i / 128.0;
+        t = sqrt(t);
+        vec3 color;
+        if (smooth_i >= 128.0) {
+          color = vec3(0.02, 0.02, 0.05);
+        } else {
+          vec3 c0 = vec3(0.02, 0.02, 0.08);
+          vec3 c1 = vec3(0.0, 0.3, 0.4);
+          vec3 c2 = vec3(0.8, 0.7, 0.3);
+          vec3 c3 = vec3(1.0);
+          float tt = fract(t * 3.0);
+          if (tt < 0.33) color = mix(c0, c1, tt / 0.33);
+          else if (tt < 0.66) color = mix(c1, c2, (tt - 0.33) / 0.33);
+          else color = mix(c2, c3, (tt - 0.66) / 0.34);
+        }
+
+        // Highlight crosshair vicinity
+        vec2 hUv = (u_highlight + vec2(0.5, 0.0)) / 3.2;
+        vec2 hScreen = hUv * min(u_resolution.x, u_resolution.y) + u_resolution * 0.5;
+        float hDist = length(gl_FragCoord.xy - hScreen);
+        if (hDist < 3.0) {
+          color = vec3(0.78, 0.66, 0.29);
+        }
+
+        fragColor = vec4(color, 1.0);
+      }
+    `;
+
+    // ============================================================
+    // SECTION 2: WEBGL UTILITIES
+    // ============================================================
+
+    function compileShader(gl, src, type) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, src);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error('Shader error:', gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    }
+
+    function createProgram(gl, vertSrc, fragSrc) {
+      const vert = compileShader(gl, vertSrc, gl.VERTEX_SHADER);
+      const frag = compileShader(gl, fragSrc, gl.FRAGMENT_SHADER);
+      if (!vert || !frag) return null;
+      const program = gl.createProgram();
+      gl.attachShader(program, vert);
+      gl.attachShader(program, frag);
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error('Program error:', gl.getProgramInfoLog(program));
+        return null;
+      }
+      gl.deleteShader(vert);
+      gl.deleteShader(frag);
+      return program;
+    }
+
+    function setupQuad(gl, program) {
+      const vertices = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+      const loc = gl.getAttribLocation(program, 'a_position');
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    }
+
+    // ============================================================
+    // SECTION 3: STATE MANAGEMENT
+    // ============================================================
+
+    const PRESETS = [
+      { name: "Spiral Galaxy", cr: -0.7269, ci: 0.1889 },
+      { name: "Douady's Rabbit", cr: -0.123, ci: 0.745 },
+      { name: "Siegel Disk", cr: -0.391, ci: -0.587 },
+      { name: "The Dendrite", cr: 0, ci: 1 },
+      { name: "San Marco Dragon", cr: -0.75, ci: 0 },
+      { name: "Airplane", cr: -1.755, ci: 0 },
+      { name: "The Basilica", cr: -1, ci: 0 },
+      { name: "Burning Ship", cr: -0.5, ci: -0.5 },
+      { name: "Sea Horse Valley", cr: -0.75, ci: 0.1 },
+      { name: "Lightning", cr: 0.285, ci: 0.01 },
+    ];
+
+    const PALETTE_NAMES = ['ABYSSAL', 'AURORA', 'MAGMA', 'PEARL', 'CELESTIAL'];
+    const MODE_NAMES = ['GRADIENT', 'ORBIT TRAP', 'DISTANCE EST.'];
+
+    const state = {
+      c_real: -0.7269,
+      c_imag: 0.1889,
+      zoom: 1.0,
+      pan_x: 0.0,
+      pan_y: 0.0,
+      max_iter: 256,
+      color_mode: 0,
+      palette: 0,
+      trap_shape: 0,
+      trap_radius: 0.5,
+      // Animation
+      drifting: false,
+      anim_mode: 'orbit', // 'orbit' or 'path'
+      anim_speed: 1.0,
+      orbit_radius: 0.1,
+      orbit_base_real: -0.7269,
+      orbit_base_imag: 0.1889,
+      // Path animation
+      path_index: 0,
+      path_t: 0,
+      // UI
+      panelOpen: false,
+      activePreset: 0,
+    };
+
+    // ============================================================
+    // SECTION 4: INIT & RENDER LOOPS
+    // ============================================================
+
+    let mainCanvas, mainGl, mainProgram, mainUniforms;
+    let miniCanvas, miniGl, miniProgram, miniUniforms;
+    let animTime = 0;
+    let lastFrameTime = 0;
+    let needsRecompile = false;
+    let recompileTimer = null;
+
+    function getUniforms(gl, program) {
+      return {
+        u_resolution: gl.getUniformLocation(program, 'u_resolution'),
+        u_c: gl.getUniformLocation(program, 'u_c'),
+        u_pan: gl.getUniformLocation(program, 'u_pan'),
+        u_zoom: gl.getUniformLocation(program, 'u_zoom'),
+        u_color_mode: gl.getUniformLocation(program, 'u_color_mode'),
+        u_trap_shape: gl.getUniformLocation(program, 'u_trap_shape'),
+        u_trap_radius: gl.getUniformLocation(program, 'u_trap_radius'),
+        u_palette: gl.getUniformLocation(program, 'u_palette'),
+        u_time: gl.getUniformLocation(program, 'u_time'),
+        u_highlight: gl.getUniformLocation(program, 'u_highlight'),
+      };
+    }
+
+    function recompileMainShader() {
+      const newProgram = createProgram(mainGl, vertexShaderSrc, buildFragmentShaderSrc(state.max_iter));
+      if (newProgram) {
+        mainGl.deleteProgram(mainProgram);
+        mainProgram = newProgram;
+        mainGl.useProgram(mainProgram);
+        setupQuad(mainGl, mainProgram);
+        mainUniforms = getUniforms(mainGl, mainProgram);
+      }
+    }
+
+    function resizeCanvas(canvas, gl) {
+      const dpr = window.devicePixelRatio || 1;
+      const w = canvas.clientWidth * dpr;
+      const h = canvas.clientHeight * dpr;
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+        gl.viewport(0, 0, w, h);
+        return true;
+      }
+      return false;
+    }
+
+    function renderJulia() {
+      resizeCanvas(mainCanvas, mainGl);
+      mainGl.useProgram(mainProgram);
+
+      mainGl.uniform2f(mainUniforms.u_resolution, mainCanvas.width, mainCanvas.height);
+      mainGl.uniform2f(mainUniforms.u_c, state.c_real, state.c_imag);
+      mainGl.uniform2f(mainUniforms.u_pan, state.pan_x, state.pan_y);
+      mainGl.uniform1f(mainUniforms.u_zoom, state.zoom);
+      mainGl.uniform1i(mainUniforms.u_color_mode, state.color_mode);
+      mainGl.uniform1i(mainUniforms.u_trap_shape, state.trap_shape);
+      mainGl.uniform1f(mainUniforms.u_trap_radius, state.trap_radius);
+      mainGl.uniform1i(mainUniforms.u_palette, state.palette);
+      mainGl.uniform1f(mainUniforms.u_time, animTime);
+
+      mainGl.drawArrays(mainGl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    function renderMandelbrot() {
+      miniGl.useProgram(miniProgram);
+      miniGl.uniform2f(miniUniforms.u_resolution, miniCanvas.width, miniCanvas.height);
+      miniGl.uniform2f(miniUniforms.u_highlight, state.c_real, state.c_imag);
+      miniGl.drawArrays(miniGl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    function updateMiniMapCrosshair() {
+      const container = document.getElementById('miniMapContainer');
+      const crosshair = document.getElementById('miniMapCrosshair');
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      const minDim = Math.min(w, h);
+
+      // Map c coords to pixel coords: c is in complex plane, minimap shows ~[-2.1, 1.1] x [-1.6, 1.6]
+      const px = ((state.c_real + 0.5) / 3.2) * minDim + (w - minDim) / 2 + (w - minDim) / 2;
+      const py = ((-state.c_imag) / 3.2) * minDim + h / 2;
+
+      // Correct mapping
+      const cx = (state.c_real + 0.5) / 3.2 * minDim + (w - minDim) / 2;
+      const cy = (-state.c_imag) / 3.2 * minDim + h / 2;
+
+      crosshair.style.left = cx + 'px';
+      crosshair.style.top = cy + 'px';
+    }
+
+    function updateCDisplay() {
+      const sign = state.c_imag >= 0 ? '+' : '-';
+      document.getElementById('cDisplay').textContent =
+        `c = ${state.c_real.toFixed(4)} ${sign} ${Math.abs(state.c_imag).toFixed(4)}i`;
+    }
+
+    function animationTick(timestamp) {
+      if (!lastFrameTime) lastFrameTime = timestamp;
+      const dt = (timestamp - lastFrameTime) / 1000;
+      lastFrameTime = timestamp;
+
+      if (state.drifting) {
+        animTime += dt * state.anim_speed;
+
+        if (state.anim_mode === 'orbit') {
+          state.c_real = state.orbit_base_real + state.orbit_radius * Math.cos(animTime * 0.5);
+          state.c_imag = state.orbit_base_imag + state.orbit_radius * 0.7 * Math.sin(animTime * 0.5);
+        } else {
+          // Path mode: interpolate between presets
+          const totalPresets = PRESETS.length;
+          state.path_t += dt * state.anim_speed * 0.15;
+          const rawIdx = state.path_t % totalPresets;
+          const idx0 = Math.floor(rawIdx) % totalPresets;
+          const idx1 = (idx0 + 1) % totalPresets;
+          const frac = rawIdx - Math.floor(rawIdx);
+          // Smooth interpolation (smoothstep)
+          const t = frac * frac * (3 - 2 * frac);
+          state.c_real = PRESETS[idx0].cr * (1 - t) + PRESETS[idx1].cr * t;
+          state.c_imag = PRESETS[idx0].ci * (1 - t) + PRESETS[idx1].ci * t;
+        }
+
+        updateCDisplay();
+        updateCInputs();
+        updateMiniMapCrosshair();
+      } else {
+        animTime += dt * 0.3;
+      }
+
+      renderJulia();
+      renderMandelbrot();
+      requestAnimationFrame(animationTick);
+    }
+
+    // ============================================================
+    // SECTION 5: INPUT HANDLERS
+    // ============================================================
+
+    let isDragging = false;
+    let dragStartX, dragStartY, dragStartPanX, dragStartPanY;
+
+    function setupMainCanvasInput() {
+      mainCanvas.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        dragStartPanX = state.pan_x;
+        dragStartPanY = state.pan_y;
+        mainCanvas.classList.add('grabbing');
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        const scale = 2.0 / (state.zoom * Math.min(mainCanvas.clientWidth, mainCanvas.clientHeight));
+        state.pan_x = dragStartPanX - dx * scale;
+        state.pan_y = dragStartPanY + dy * scale;
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDragging = false;
+        mainCanvas.classList.remove('grabbing');
+      });
+
+      mainCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomFactor = Math.pow(1.1, -e.deltaY / 100);
+        const rect = mainCanvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const minDim = Math.min(mainCanvas.clientWidth, mainCanvas.clientHeight);
+
+        // Cursor position in complex plane before zoom
+        const cx = (mx - mainCanvas.clientWidth / 2) / minDim / state.zoom + state.pan_x;
+        const cy = -(my - mainCanvas.clientHeight / 2) / minDim / state.zoom + state.pan_y;
+
+        const newZoom = Math.max(0.1, Math.min(1000000, state.zoom * zoomFactor));
+
+        // Adjust pan so cursor stays at same complex position
+        state.pan_x = cx - (mx - mainCanvas.clientWidth / 2) / minDim / newZoom;
+        state.pan_y = cy + (my - mainCanvas.clientHeight / 2) / minDim / newZoom;
+        state.zoom = newZoom;
+
+        // Auto-increase iterations at deep zoom
+        const autoIter = Math.floor(256 + 64 * Math.log2(Math.max(1, state.zoom)));
+        if (autoIter > state.max_iter && autoIter <= 1024) {
+          state.max_iter = Math.min(1024, autoIter);
+          document.getElementById('iterSlider').value = state.max_iter;
+          document.getElementById('iterLabel').textContent = state.max_iter;
+          scheduleRecompile();
+        }
+      }, { passive: false });
+
+      // Double click to reset
+      mainCanvas.addEventListener('dblclick', () => {
+        state.zoom = 1.0;
+        state.pan_x = 0;
+        state.pan_y = 0;
+      });
+
+      // Touch support
+      let touches = [];
+      let initialPinchDist = 0;
+      let initialZoom = 1;
+
+      mainCanvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        touches = Array.from(e.touches);
+        if (touches.length === 1) {
+          isDragging = true;
+          dragStartX = touches[0].clientX;
+          dragStartY = touches[0].clientY;
+          dragStartPanX = state.pan_x;
+          dragStartPanY = state.pan_y;
+        } else if (touches.length === 2) {
+          isDragging = false;
+          initialPinchDist = Math.hypot(
+            touches[1].clientX - touches[0].clientX,
+            touches[1].clientY - touches[0].clientY
+          );
+          initialZoom = state.zoom;
+        }
+      }, { passive: false });
+
+      mainCanvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        const currentTouches = Array.from(e.touches);
+        if (currentTouches.length === 1 && isDragging) {
+          const dx = currentTouches[0].clientX - dragStartX;
+          const dy = currentTouches[0].clientY - dragStartY;
+          const scale = 2.0 / (state.zoom * Math.min(mainCanvas.clientWidth, mainCanvas.clientHeight));
+          state.pan_x = dragStartPanX - dx * scale;
+          state.pan_y = dragStartPanY + dy * scale;
+        } else if (currentTouches.length === 2) {
+          const dist = Math.hypot(
+            currentTouches[1].clientX - currentTouches[0].clientX,
+            currentTouches[1].clientY - currentTouches[0].clientY
+          );
+          state.zoom = Math.max(0.1, Math.min(1000000, initialZoom * (dist / initialPinchDist)));
+        }
+      }, { passive: false });
+
+      mainCanvas.addEventListener('touchend', (e) => {
+        isDragging = false;
+        touches = Array.from(e.touches);
+      });
+    }
+
+    function setupMiniMapInput() {
+      const container = document.getElementById('miniMapContainer');
+
+      function updateCFromMiniMap(e) {
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const w = rect.width;
+        const h = rect.height;
+        const minDim = Math.min(w, h);
+
+        state.c_real = ((x - w / 2) / minDim) * 3.2 - 0.5;
+        state.c_imag = -((y - h / 2) / minDim) * 3.2;
+
+        if (state.drifting && state.anim_mode === 'orbit') {
+          state.orbit_base_real = state.c_real;
+          state.orbit_base_imag = state.c_imag;
+        }
+
+        updateCDisplay();
+        updateCInputs();
+        updateMiniMapCrosshair();
+      }
+
+      let dragging = false;
+      container.addEventListener('mousedown', (e) => {
+        dragging = true;
+        updateCFromMiniMap(e);
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (dragging) updateCFromMiniMap(e);
+      });
+      window.addEventListener('mouseup', () => { dragging = false; });
+    }
+
+    // ============================================================
+    // SECTION 6: UI HANDLERS
+    // ============================================================
+
+    function updateCInputs() {
+      document.getElementById('cRealInput').value = state.c_real.toFixed(4);
+      document.getElementById('cImagInput').value = state.c_imag.toFixed(4);
+    }
+
+    function scheduleRecompile() {
+      clearTimeout(recompileTimer);
+      recompileTimer = setTimeout(() => {
+        recompileMainShader();
+      }, 300);
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 1500);
+    }
+
+    function setupUI() {
+      // Palette dropdown
+      const paletteBtn = document.getElementById('paletteBtn');
+      const paletteMenu = document.getElementById('paletteMenu');
+      paletteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        paletteMenu.classList.toggle('open');
+        document.getElementById('modeMenu').classList.remove('open');
+      });
+      document.querySelectorAll('.palette-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+          state.palette = parseInt(opt.dataset.palette);
+          paletteBtn.textContent = PALETTE_NAMES[state.palette];
+          document.querySelectorAll('.palette-option').forEach(o => o.classList.remove('active'));
+          opt.classList.add('active');
+          paletteMenu.classList.remove('open');
+        });
+      });
+
+      // Mode dropdown
+      const modeBtn = document.getElementById('modeBtn');
+      const modeMenu = document.getElementById('modeMenu');
+      modeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modeMenu.classList.toggle('open');
+        paletteMenu.classList.remove('open');
+      });
+      document.querySelectorAll('.mode-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+          state.color_mode = parseInt(opt.dataset.mode);
+          modeBtn.textContent = MODE_NAMES[state.color_mode];
+          document.querySelectorAll('.mode-option').forEach(o => o.classList.remove('active'));
+          opt.classList.add('active');
+          modeMenu.classList.remove('open');
+        });
+      });
+
+      // Close dropdowns on click elsewhere
+      document.addEventListener('click', () => {
+        paletteMenu.classList.remove('open');
+        modeMenu.classList.remove('open');
+      });
+
+      // Settings panel
+      document.getElementById('settingsBtn').addEventListener('click', () => {
+        state.panelOpen = !state.panelOpen;
+        document.getElementById('sidePanel').classList.toggle('open', state.panelOpen);
+      });
+      document.getElementById('panelClose').addEventListener('click', () => {
+        state.panelOpen = false;
+        document.getElementById('sidePanel').classList.remove('open');
+      });
+
+      // Iteration slider
+      const iterSlider = document.getElementById('iterSlider');
+      const iterLabel = document.getElementById('iterLabel');
+      iterSlider.addEventListener('input', () => {
+        state.max_iter = parseInt(iterSlider.value);
+        iterLabel.textContent = state.max_iter;
+        scheduleRecompile();
+      });
+
+      // Trap shape
+      document.getElementById('trapShapeSelect').addEventListener('change', (e) => {
+        state.trap_shape = parseInt(e.target.value);
+      });
+
+      // Trap radius
+      const trapSlider = document.getElementById('trapRadiusSlider');
+      document.getElementById('trapRadiusLabel').textContent = parseFloat(trapSlider.value).toFixed(2);
+      trapSlider.addEventListener('input', () => {
+        state.trap_radius = parseFloat(trapSlider.value);
+        document.getElementById('trapRadiusLabel').textContent = state.trap_radius.toFixed(2);
+      });
+
+      // c inputs
+      document.getElementById('cRealInput').addEventListener('change', (e) => {
+        state.c_real = parseFloat(e.target.value) || 0;
+        if (state.drifting && state.anim_mode === 'orbit') state.orbit_base_real = state.c_real;
+        updateCDisplay();
+        updateMiniMapCrosshair();
+      });
+      document.getElementById('cImagInput').addEventListener('change', (e) => {
+        state.c_imag = parseFloat(e.target.value) || 0;
+        if (state.drifting && state.anim_mode === 'orbit') state.orbit_base_imag = state.c_imag;
+        updateCDisplay();
+        updateMiniMapCrosshair();
+      });
+
+      // Orbit radius
+      const orbitSlider = document.getElementById('orbitRadiusSlider');
+      document.getElementById('orbitRadiusLabel').textContent = parseFloat(orbitSlider.value).toFixed(2);
+      orbitSlider.addEventListener('input', () => {
+        state.orbit_radius = parseFloat(orbitSlider.value);
+        document.getElementById('orbitRadiusLabel').textContent = state.orbit_radius.toFixed(2);
+      });
+
+      // Drift button
+      const driftBtn = document.getElementById('driftBtn');
+      driftBtn.addEventListener('click', () => {
+        state.drifting = !state.drifting;
+        if (state.drifting) {
+          state.orbit_base_real = state.c_real;
+          state.orbit_base_imag = state.c_imag;
+          driftBtn.innerHTML = '&#9646;&#9646; DRIFT';
+          driftBtn.classList.add('playing');
+        } else {
+          driftBtn.innerHTML = '&#9654; DRIFT';
+          driftBtn.classList.remove('playing');
+        }
+      });
+
+      // Speed slider
+      const speedSlider = document.getElementById('speedSlider');
+      const speedLabel = document.getElementById('speedLabel');
+      speedSlider.addEventListener('input', () => {
+        state.anim_speed = parseFloat(speedSlider.value);
+        speedLabel.textContent = state.anim_speed.toFixed(1) + 'x';
+      });
+
+      // Animation mode buttons
+      document.querySelectorAll('.anim-mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.anim_mode = btn.dataset.anim;
+          document.querySelectorAll('.anim-mode-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      });
+
+      // Save screenshot
+      document.getElementById('saveBtn').addEventListener('click', saveScreenshot);
+
+      // Share link
+      document.getElementById('shareBtn').addEventListener('click', shareLink);
+
+      // Build presets
+      buildPresets();
+    }
+
+    function buildPresets() {
+      const strip = document.getElementById('presetStrip');
+      // Create a hidden canvas for thumbnails
+      const thumbCanvas = document.createElement('canvas');
+      thumbCanvas.width = 32;
+      thumbCanvas.height = 32;
+      const thumbGl = thumbCanvas.getContext('webgl2', { preserveDrawingBuffer: true });
+      if (thumbGl) {
+        const thumbProgram = createProgram(thumbGl, vertexShaderSrc, buildFragmentShaderSrc(64));
+        if (thumbProgram) {
+          thumbGl.useProgram(thumbProgram);
+          setupQuad(thumbGl, thumbProgram);
+          const thumbUnis = getUniforms(thumbGl, thumbProgram);
+          thumbGl.viewport(0, 0, 32, 32);
+
+          PRESETS.forEach((preset, i) => {
+            // Render thumbnail
+            thumbGl.uniform2f(thumbUnis.u_resolution, 32, 32);
+            thumbGl.uniform2f(thumbUnis.u_c, preset.cr, preset.ci);
+            thumbGl.uniform2f(thumbUnis.u_pan, 0, 0);
+            thumbGl.uniform1f(thumbUnis.u_zoom, 1.0);
+            thumbGl.uniform1i(thumbUnis.u_color_mode, 0);
+            thumbGl.uniform1i(thumbUnis.u_palette, 0);
+            thumbGl.uniform1f(thumbUnis.u_time, 0);
+            thumbGl.uniform1i(thumbUnis.u_trap_shape, 0);
+            thumbGl.uniform1f(thumbUnis.u_trap_radius, 0.5);
+            thumbGl.drawArrays(thumbGl.TRIANGLE_STRIP, 0, 4);
+
+            const chip = document.createElement('div');
+            chip.className = 'preset-chip' + (i === 0 ? ' active' : '');
+            const img = document.createElement('img');
+            img.className = 'preset-thumb';
+            img.src = thumbCanvas.toDataURL();
+            img.alt = preset.name;
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = preset.name;
+            chip.appendChild(img);
+            chip.appendChild(nameSpan);
+            chip.addEventListener('click', () => {
+              state.c_real = preset.cr;
+              state.c_imag = preset.ci;
+              state.activePreset = i;
+              if (state.drifting && state.anim_mode === 'orbit') {
+                state.orbit_base_real = preset.cr;
+                state.orbit_base_imag = preset.ci;
+              }
+              updateCDisplay();
+              updateCInputs();
+              updateMiniMapCrosshair();
+              document.querySelectorAll('.preset-chip').forEach(c => c.classList.remove('active'));
+              chip.classList.add('active');
+            });
+            strip.appendChild(chip);
+          });
+        }
+      }
+    }
+
+    // ============================================================
+    // SECTION 7: EXPORT & SHARING
+    // ============================================================
+
+    function saveScreenshot() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = mainCanvas.clientWidth * dpr * 2;
+      const h = mainCanvas.clientHeight * dpr * 2;
+
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = w;
+      exportCanvas.height = h;
+      const gl = exportCanvas.getContext('webgl2', { preserveDrawingBuffer: true });
+      if (!gl) return;
+
+      const program = createProgram(gl, vertexShaderSrc, buildFragmentShaderSrc(state.max_iter));
+      gl.useProgram(program);
+      setupQuad(gl, program);
+      const unis = getUniforms(gl, program);
+      gl.viewport(0, 0, w, h);
+
+      gl.uniform2f(unis.u_resolution, w, h);
+      gl.uniform2f(unis.u_c, state.c_real, state.c_imag);
+      gl.uniform2f(unis.u_pan, state.pan_x, state.pan_y);
+      gl.uniform1f(unis.u_zoom, state.zoom);
+      gl.uniform1i(unis.u_color_mode, state.color_mode);
+      gl.uniform1i(unis.u_trap_shape, state.trap_shape);
+      gl.uniform1f(unis.u_trap_radius, state.trap_radius);
+      gl.uniform1i(unis.u_palette, state.palette);
+      gl.uniform1f(unis.u_time, animTime);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      const link = document.createElement('a');
+      link.download = `julia-${state.c_real.toFixed(4)}-${state.c_imag.toFixed(4)}-${Date.now()}.png`;
+      link.href = exportCanvas.toDataURL('image/png');
+      link.click();
+      showToast('Screenshot saved');
+    }
+
+    function shareLink() {
+      const params = [
+        `c=${state.c_real.toFixed(4)},${state.c_imag.toFixed(4)}`,
+        `zoom=${state.zoom.toFixed(2)}`,
+        `px=${state.pan_x.toFixed(4)}`,
+        `py=${state.pan_y.toFixed(4)}`,
+        `palette=${PALETTE_NAMES[state.palette].toLowerCase()}`,
+        `mode=${['gradient','orbit-trap','distance-est'][state.color_mode]}`,
+      ].join('&');
+      const url = window.location.origin + window.location.pathname + '#' + params;
+      window.location.hash = params;
+      navigator.clipboard.writeText(url).then(() => {
+        showToast('Link copied!');
+      }).catch(() => {
+        showToast('URL updated');
+      });
+    }
+
+    function parseHash() {
+      const hash = window.location.hash.slice(1);
+      if (!hash) return;
+      const params = {};
+      hash.split('&').forEach(pair => {
+        const [k, v] = pair.split('=');
+        params[k] = v;
+      });
+
+      if (params.c) {
+        const parts = params.c.split(',');
+        state.c_real = parseFloat(parts[0]) || state.c_real;
+        state.c_imag = parseFloat(parts[1]) || state.c_imag;
+      }
+      if (params.zoom) state.zoom = parseFloat(params.zoom) || state.zoom;
+      if (params.px) state.pan_x = parseFloat(params.px) || 0;
+      if (params.py) state.pan_y = parseFloat(params.py) || 0;
+      if (params.palette) {
+        const idx = PALETTE_NAMES.findIndex(n => n.toLowerCase() === params.palette);
+        if (idx >= 0) state.palette = idx;
+      }
+      if (params.mode) {
+        const modes = ['gradient', 'orbit-trap', 'distance-est'];
+        const idx = modes.indexOf(params.mode);
+        if (idx >= 0) state.color_mode = idx;
+      }
+    }
+
+    // ============================================================
+    // SECTION 8: KEYBOARD SHORTCUTS
+    // ============================================================
+
+    function setupKeyboard() {
+      document.addEventListener('keydown', (e) => {
+        // Don't capture if typing in an input
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+        switch (e.key) {
+          case ' ':
+            e.preventDefault();
+            document.getElementById('driftBtn').click();
+            break;
+          case 'r':
+          case 'R':
+            state.zoom = 1.0;
+            state.pan_x = 0;
+            state.pan_y = 0;
+            break;
+          case 's':
+          case 'S':
+            saveScreenshot();
+            break;
+          case 'p':
+          case 'P':
+            state.activePreset = (state.activePreset + 1) % PRESETS.length;
+            const p = PRESETS[state.activePreset];
+            state.c_real = p.cr;
+            state.c_imag = p.ci;
+            updateCDisplay();
+            updateCInputs();
+            updateMiniMapCrosshair();
+            document.querySelectorAll('.preset-chip').forEach((c, i) => {
+              c.classList.toggle('active', i === state.activePreset);
+            });
+            break;
+          case '1': case '2': case '3': case '4': case '5':
+            const pi = parseInt(e.key) - 1;
+            state.palette = pi;
+            document.getElementById('paletteBtn').textContent = PALETTE_NAMES[pi];
+            document.querySelectorAll('.palette-option').forEach((o, i) => {
+              o.classList.toggle('active', i === pi);
+            });
+            break;
+        }
+      });
+    }
+
+    // ============================================================
+    // SECTION 9: PALETTE SWATCHES
+    // ============================================================
+
+    function drawPaletteSwatches() {
+      const palettes = [
+        [[0.02,0.02,0.08],[0,0.15,0.25],[0,0.7,0.65],[0.85,0.75,0.35],[1,1,1]],
+        [[0.15,0,0.2],[0,0.5,0.3],[0,0.65,0.55],[0.6,0.85,0.9],[1,0.95,0.9]],
+        [[0.1,0.05,0.05],[0.45,0.05,0.02],[0.8,0.2,0],[1,0.6,0.1],[1,0.9,0.65]],
+        [[0.08,0.05,0.04],[0.35,0.18,0.2],[0.6,0.4,0.35],[0.85,0.75,0.6],[0.9,0.88,0.85]],
+        [[0,0,0],[0.15,0.05,0.35],[0.1,0.2,0.6],[0.2,0.5,1],[0.9,0.95,1]],
+      ];
+      document.querySelectorAll('.palette-swatch').forEach(canvas => {
+        const ctx = canvas.getContext('2d');
+        const idx = parseInt(canvas.dataset.p);
+        const colors = palettes[idx];
+        const w = canvas.width;
+        for (let x = 0; x < w; x++) {
+          const t = x / w;
+          let seg = t * 4;
+          const i0 = Math.min(3, Math.floor(seg));
+          const f = seg - i0;
+          const c0 = colors[i0];
+          const c1 = colors[i0 + 1];
+          const r = Math.round((c0[0] * (1 - f) + c1[0] * f) * 255);
+          const g = Math.round((c0[1] * (1 - f) + c1[1] * f) * 255);
+          const b = Math.round((c0[2] * (1 - f) + c1[2] * f) * 255);
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fillRect(x, 0, 1, 10);
+        }
+      });
+    }
+
+    // ============================================================
+    // SECTION 10: INIT
+    // ============================================================
+
+    function init() {
+      parseHash();
+
+      // Main canvas
+      mainCanvas = document.getElementById('mainCanvas');
+      mainGl = mainCanvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: false });
+      if (!mainGl) {
+        document.body.innerHTML = '<p style="color:white;padding:40px;">WebGL2 is required. Please use a modern browser.</p>';
+        return;
+      }
+
+      mainProgram = createProgram(mainGl, vertexShaderSrc, buildFragmentShaderSrc(state.max_iter));
+      mainGl.useProgram(mainProgram);
+      setupQuad(mainGl, mainProgram);
+      mainUniforms = getUniforms(mainGl, mainProgram);
+
+      // Mini map canvas
+      miniCanvas = document.getElementById('miniMapCanvas');
+      miniGl = miniCanvas.getContext('webgl2', { antialias: false });
+      miniProgram = createProgram(miniGl, vertexShaderSrc, mandelbrotFragSrc);
+      miniGl.useProgram(miniProgram);
+      setupQuad(miniGl, miniProgram);
+      miniUniforms = getUniforms(miniGl, miniProgram);
+
+      // Input
+      setupMainCanvasInput();
+      setupMiniMapInput();
+      setupKeyboard();
+
+      // UI
+      setupUI();
+      drawPaletteSwatches();
+      updateCDisplay();
+      updateCInputs();
+      updateMiniMapCrosshair();
+
+      // Sync UI with parsed state
+      document.getElementById('paletteBtn').textContent = PALETTE_NAMES[state.palette];
+      document.querySelectorAll('.palette-option').forEach((o, i) => o.classList.toggle('active', i === state.palette));
+      document.getElementById('modeBtn').textContent = MODE_NAMES[state.color_mode];
+      document.querySelectorAll('.mode-option').forEach((o, i) => o.classList.toggle('active', i === state.color_mode));
+
+      // Visibility API: pause when tab hidden
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          lastFrameTime = 0;
+        }
+      });
+
+      // Window resize handler
+      window.addEventListener('resize', () => {
+        resizeCanvas(mainCanvas, mainGl);
+        updateMiniMapCrosshair();
+      });
+
+      // Fade in
+      setTimeout(() => document.getElementById('app').classList.add('loaded'), 50);
+
+      // Start render loop
+      requestAnimationFrame(animationTick);
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
