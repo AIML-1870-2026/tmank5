@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Early Graduation Decision Neural Network</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #232736;
+  --border: #2e3347;
+  --text: #e4e6f0;
+  --text-dim: #8b8fa8;
+  --accent: #6c63ff;
+  --accent2: #4ecdc4;
+  --red: #ff6b6b;
+  --yellow: #ffd93d;
+  --green: #4ecdc4;
+  --glow: rgba(108, 99, 255, 0.3);
+  --radius: 12px;
+  --transition: 300ms ease;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 28px 20px 20px;
+  background: linear-gradient(135deg, rgba(108,99,255,0.12), rgba(78,205,196,0.08));
+  border-bottom: 1px solid var(--border);
+}
+.header h1 {
+  font-size: 1.7rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #6c63ff, #4ecdc4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.5px;
+}
+.header p {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin-top: 6px;
+}
+
+/* Main layout */
+.main {
+  display: grid;
+  grid-template-columns: 280px 1fr 300px;
+  gap: 0;
+  min-height: calc(100vh - 200px);
+}
+
+/* Panels */
+.panel {
+  padding: 20px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.panel:last-child { border-right: none; border-left: 1px solid var(--border); }
+.panel-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+
+/* Sliders */
+.slider-group {
+  margin-bottom: 14px;
+}
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+  font-size: 0.82rem;
+}
+.slider-label span:first-child {
+  color: var(--text);
+  font-weight: 500;
+}
+.slider-value {
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  text-align: right;
+}
+.slider-weight {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface2);
+  outline: none;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--glow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 14px var(--glow);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 0 8px var(--glow);
+}
+
+/* Network canvas */
+.network-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  position: relative;
+}
+#networkCanvas {
+  width: 100%;
+  flex: 1;
+  min-height: 400px;
+}
+
+/* Probability gauge */
+.probability-section {
+  text-align: center;
+  padding: 20px 0 10px;
+  width: 100%;
+}
+.gauge-container {
+  position: relative;
+  width: 200px;
+  height: 110px;
+  margin: 0 auto;
+}
+.gauge-canvas { width: 200px; height: 110px; }
+.prob-number {
+  font-size: 2.8rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--transition);
+  line-height: 1;
+}
+.recommendation {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-top: 6px;
+  font-weight: 500;
+  min-height: 1.2em;
+}
+
+/* Math breakdown */
+.math-panel {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+.math-section {
+  margin-bottom: 16px;
+}
+.math-section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent2);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.math-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0 8px;
+}
+.math-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-dim);
+  padding: 1px 0;
+}
+.math-row .val { color: var(--text); font-weight: 600; }
+.math-row.highlight { color: var(--accent); }
+.math-row.highlight .val { color: var(--accent); }
+
+/* Presets */
+.presets-bar {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  justify-content: center;
+  flex-wrap: wrap;
+  background: var(--surface);
+}
+.preset-btn {
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.preset-btn:hover {
+  border-color: var(--accent);
+  background: rgba(108,99,255,0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.preset-btn:active { transform: translateY(0); }
+.reset-btn {
+  border-color: var(--text-dim);
+  color: var(--text-dim);
+}
+.reset-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+  background: rgba(255,255,255,0.05);
+}
+
+/* Save / Compare */
+.save-section {
+  border-top: 1px solid var(--border);
+  padding: 16px 20px;
+  background: var(--surface);
+}
+.save-controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.save-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: rgba(108,99,255,0.1);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.save-btn:hover {
+  background: rgba(108,99,255,0.2);
+  transform: translateY(-1px);
+}
+.save-btn.secondary {
+  border-color: var(--accent2);
+  color: var(--accent2);
+  background: rgba(78,205,196,0.1);
+}
+.save-btn.secondary:hover { background: rgba(78,205,196,0.2); }
+
+.saved-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.saved-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface2);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.saved-chip:hover {
+  border-color: var(--accent);
+  background: rgba(108,99,255,0.08);
+}
+.saved-chip .chip-prob {
+  font-weight: 700;
+  color: var(--accent2);
+}
+.saved-chip .chip-remove {
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  margin-left: 2px;
+}
+.saved-chip .chip-remove:hover { color: var(--red); }
+
+/* Compare modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  max-width: 800px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+.modal h2 {
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+  color: var(--accent);
+}
+.modal-close {
+  float: right;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.5rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.modal-close:hover { color: var(--text); }
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+.compare-table th, .compare-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.compare-table th {
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.5px;
+}
+.compare-table td { font-variant-numeric: tabular-nums; }
+.compare-table tr:last-child td { border-bottom: none; }
+.compare-table .prob-cell { font-weight: 700; }
+.compare-table .diff-high { color: var(--green); }
+.compare-table .diff-low { color: var(--red); }
+
+/* Save name prompt */
+.save-prompt {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(4px);
+}
+.save-prompt.active { display: flex; }
+.save-prompt-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 340px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+.save-prompt-box h3 { margin-bottom: 12px; font-size: 1rem; }
+.save-prompt-box input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.9rem;
+  outline: none;
+  margin-bottom: 12px;
+}
+.save-prompt-box input[type="text"]:focus { border-color: var(--accent); }
+.save-prompt-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.save-prompt-actions button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.save-prompt-actions .confirm-save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Tooltip */
+.tooltip {
+  display: none;
+  position: fixed;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  color: var(--text);
+  pointer-events: none;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  max-width: 220px;
+}
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .main { grid-template-columns: 260px 1fr; }
+  .math-breakdown-panel { display: none; }
+}
+@media (max-width: 768px) {
+  .main { grid-template-columns: 1fr; }
+  .panel { border-right: none; border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Early Graduation Decision Neural Network</h1>
+  <p>Interactive visualization to model your graduation decision</p>
+</div>
+
+<div class="main">
+  <!-- Left: Sliders -->
+  <div class="panel sliders-panel" id="slidersPanel"></div>
+
+  <!-- Center: Network + Probability -->
+  <div class="network-panel">
+    <canvas id="networkCanvas"></canvas>
+    <div class="probability-section">
+      <div class="gauge-container">
+        <canvas class="gauge-canvas" id="gaugeCanvas" width="200" height="110"></canvas>
+      </div>
+      <div class="prob-number" id="probNumber">50%</div>
+      <div class="recommendation" id="recommendation">Uncertain - needs more consideration</div>
+    </div>
+  </div>
+
+  <!-- Right: Math Breakdown -->
+  <div class="panel math-breakdown-panel" id="mathPanel">
+    <div class="panel-title">Mathematical Breakdown</div>
+    <div class="math-panel" id="mathContent"></div>
+  </div>
+</div>
+
+<!-- Presets -->
+<div class="presets-bar">
+  <button class="preset-btn" data-preset="dreamJob">Dream Job Offer</button>
+  <button class="preset-btn" data-preset="struggling">Struggling Financially</button>
+  <button class="preset-btn" data-preset="lovingCollege">Loving College Life</button>
+  <button class="preset-btn" data-preset="burntOut">Totally Burnt Out</button>
+  <button class="preset-btn reset-btn" data-preset="reset">Reset to Default</button>
+</div>
+
+<!-- Save / Compare -->
+<div class="save-section">
+  <div class="save-controls">
+    <button class="save-btn" id="saveBtn">Save Current Config</button>
+    <button class="save-btn secondary" id="compareBtn">Compare Saved</button>
+  </div>
+  <div class="saved-list" id="savedList"></div>
+</div>
+
+<!-- Save prompt -->
+<div class="save-prompt" id="savePrompt">
+  <div class="save-prompt-box">
+    <h3>Save Configuration</h3>
+    <input type="text" id="saveNameInput" placeholder="Enter a name..." maxlength="30">
+    <div class="save-prompt-actions">
+      <button id="cancelSave">Cancel</button>
+      <button class="confirm-save" id="confirmSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Compare modal -->
+<div class="modal-overlay" id="compareModal">
+  <div class="modal">
+    <button class="modal-close" id="closeCompare">&times;</button>
+    <h2>Compare Saved Configurations</h2>
+    <div id="compareContent"></div>
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ===== CONFIGURATION =====
+const FACTORS = [
+  { name: 'Academic Readiness', weight: 1.0, desc: 'GPA, credits completed, requirements met' },
+  { name: 'Post-Grad Plan Certainty', weight: 0.85, desc: 'Clear path vs. uncertain future' },
+  { name: 'Career Timing', weight: 0.70, desc: 'Job market conditions, grad school deadlines' },
+  { name: 'Skills Preparedness', weight: 0.55, desc: 'Ready for real world, professional skills' },
+  { name: 'Social Connections', weight: 0.40, desc: 'Friends graduating, campus life, relationships' },
+  { name: 'Financial Factors', weight: 0.30, desc: 'Student loans, cost savings, job offers' },
+  { name: 'Mental Health & Burnout', weight: 0.20, desc: 'Stress level, need for break' },
+  { name: 'Family Expectations', weight: 0.10, desc: 'Family pressure and expectations' }
+];
+
+const PRESETS = {
+  dreamJob:      [85, 95, 90, 80, 40, 85, 60, 70],
+  struggling:    [70, 50, 60, 55, 60, 90, 40, 65],
+  lovingCollege: [75, 40, 50, 60, 95, 50, 80, 30],
+  burntOut:      [80, 65, 70, 70, 30, 60, 15, 50],
+  reset:         [50, 50, 50, 50, 50, 50, 50, 50]
+};
+
+// ===== NEURAL NETWORK WEIGHTS (deterministic, seeded) =====
+function seededRandom(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 16807 + 0) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+const rng = seededRandom(42);
+
+// All-positive weights so sliders at 100% → ~100% output, sliders at 0% → ~0% output
+// Slight variation per connection to keep the network visually interesting
+function initPositiveWeights(rows, cols, base) {
+  const w = [];
+  for (let i = 0; i < rows; i++) {
+    w[i] = [];
+    for (let j = 0; j < cols; j++) {
+      w[i][j] = base + rng() * base * 0.4; // always positive, varied
+    }
+  }
+  return w;
+}
+
+// Input→Hidden1: scaled by factor priority weights
+const W1_base = initPositiveWeights(8, 6, 0.6);
+const B1 = [-2.5, -2.5, -2.5, -2.5, -2.5, -2.5]; // negative bias so 0-inputs → near-0 activation
+
+const W2 = initPositiveWeights(6, 4, 1.2);
+const B2 = [-3.0, -3.0, -3.0, -3.0];
+
+const W3 = initPositiveWeights(4, 1, 3.0);
+const B3 = [-5.0];
+
+// Scale W1 by factor weights so higher-priority factors contribute more
+const W1 = W1_base.map((row, i) => row.map(v => v * FACTORS[i].weight));
+
+function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+
+function forwardPass(inputs) {
+  // inputs: array of 8 values [0-1]
+  // Hidden layer 1 (6 nodes)
+  const h1_z = [];
+  const h1_a = [];
+  for (let j = 0; j < 6; j++) {
+    let z = B1[j];
+    for (let i = 0; i < 8; i++) z += inputs[i] * W1[i][j];
+    h1_z[j] = z;
+    h1_a[j] = sigmoid(z);
+  }
+  // Hidden layer 2 (4 nodes)
+  const h2_z = [];
+  const h2_a = [];
+  for (let j = 0; j < 4; j++) {
+    let z = B2[j];
+    for (let i = 0; i < 6; i++) z += h1_a[i] * W2[i][j];
+    h2_z[j] = z;
+    h2_a[j] = sigmoid(z);
+  }
+  // Output (1 node)
+  let o_z = B3[0];
+  for (let i = 0; i < 4; i++) o_z += h2_a[i] * W3[i][0];
+  const output = sigmoid(o_z);
+
+  return { inputs, h1_z, h1_a, h2_z, h2_a, o_z, output };
+}
+
+// ===== STATE =====
+let sliderValues = FACTORS.map(() => 50);
+let animatingSliders = null; // {start, target, startTime, duration}
+let currentResult = null;
+let savedConfigs = [];
+let displayedProb = 50;
+
+// ===== BUILD SLIDERS =====
+const slidersPanel = document.getElementById('slidersPanel');
+const sliderEls = [];
+
+function buildSliders() {
+  slidersPanel.innerHTML = '<div class="panel-title">Input Factors</div>';
+  FACTORS.forEach((f, i) => {
+    const group = document.createElement('div');
+    group.className = 'slider-group';
+    group.innerHTML = `
+      <div class="slider-label">
+        <span>${f.name}</span>
+        <span class="slider-value" id="sv${i}">${sliderValues[i]}%</span>
+      </div>
+      <div class="slider-weight">Weight: ${f.weight.toFixed(2)}</div>
+      <input type="range" min="0" max="100" value="${sliderValues[i]}" id="slider${i}"
+        title="${f.desc}">
+    `;
+    slidersPanel.appendChild(group);
+    const input = group.querySelector('input');
+    sliderEls[i] = input;
+    input.addEventListener('input', () => {
+      sliderValues[i] = +input.value;
+      document.getElementById(`sv${i}`).textContent = input.value + '%';
+      recalculate();
+    });
+  });
+}
+
+// ===== PRESETS =====
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const key = btn.dataset.preset;
+    const target = PRESETS[key];
+    if (!target) return;
+    animateSliders(target);
+  });
+});
+
+function animateSliders(target) {
+  const start = [...sliderValues];
+  const startTime = performance.now();
+  const duration = 500;
+
+  function tick(now) {
+    const t = Math.min((now - startTime) / duration, 1);
+    const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; // easeInOutCubic
+    for (let i = 0; i < 8; i++) {
+      sliderValues[i] = Math.round(start[i] + (target[i] - start[i]) * ease);
+      sliderEls[i].value = sliderValues[i];
+      document.getElementById(`sv${i}`).textContent = sliderValues[i] + '%';
+    }
+    recalculate();
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ===== RECALCULATE =====
+function recalculate() {
+  const inputs = sliderValues.map(v => v / 100);
+  currentResult = forwardPass(inputs);
+  const prob = currentResult.output * 100;
+  animateProbTo(prob);
+  updateMathPanel();
+  drawNetwork();
+  drawGauge();
+}
+
+function animateProbTo(target) {
+  displayedProb = target;
+  const probEl = document.getElementById('probNumber');
+  const recEl = document.getElementById('recommendation');
+  const p = Math.round(target * 10) / 10;
+  probEl.textContent = p.toFixed(1) + '%';
+
+  if (target >= 67) {
+    probEl.style.color = 'var(--green)';
+    recEl.textContent = 'Strong recommendation to graduate early';
+  } else if (target >= 50) {
+    probEl.style.color = 'var(--yellow)';
+    recEl.textContent = 'Consider graduating early';
+  } else if (target >= 33) {
+    probEl.style.color = 'var(--yellow)';
+    recEl.textContent = 'Uncertain - needs more consideration';
+  } else {
+    probEl.style.color = 'var(--red)';
+    recEl.textContent = 'Recommendation to stay';
+  }
+}
+
+// ===== GAUGE =====
+function drawGauge() {
+  const canvas = document.getElementById('gaugeCanvas');
+  const ctx = canvas.getContext('2d');
+  const w = 200, h = 110;
+  canvas.width = w * 2; canvas.height = h * 2;
+  ctx.scale(2, 2);
+  ctx.clearRect(0, 0, w, h);
+
+  const cx = w / 2, cy = h - 10;
+  const r = 80;
+  const startAngle = Math.PI;
+  const endAngle = 2 * Math.PI;
+  const prob = displayedProb / 100;
+
+  // Background arc
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, endAngle);
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Gradient arc
+  const grad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+  grad.addColorStop(0, '#ff6b6b');
+  grad.addColorStop(0.4, '#ffd93d');
+  grad.addColorStop(0.7, '#4ecdc4');
+  grad.addColorStop(1, '#4ecdc4');
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startAngle, startAngle + (endAngle - startAngle) * prob);
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = grad;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Needle indicator
+  const angle = startAngle + (endAngle - startAngle) * prob;
+  const nx = cx + Math.cos(angle) * (r + 1);
+  const ny = cy + Math.sin(angle) * (r + 1);
+  ctx.beginPath();
+  ctx.arc(nx, ny, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(108,99,255,0.5)';
+  ctx.shadowBlur = 10;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+// ===== MATH PANEL =====
+function updateMathPanel() {
+  if (!currentResult) return;
+  const r = currentResult;
+  let html = '';
+
+  // Input layer
+  html += '<div class="math-section"><div class="math-section-title">Input Layer</div><hr class="math-divider">';
+  FACTORS.forEach((f, i) => {
+    const val = sliderValues[i];
+    const weighted = (val / 100 * f.weight).toFixed(3);
+    html += `<div class="math-row"><span>${f.name.substring(0, 22)}</span><span class="val">${val}% &times; ${f.weight.toFixed(2)} = ${weighted}</span></div>`;
+  });
+  html += '</div>';
+
+  // Hidden 1
+  html += '<div class="math-section"><div class="math-section-title">Hidden Layer 1 (6 nodes)</div><hr class="math-divider">';
+  r.h1_a.forEach((a, i) => {
+    html += `<div class="math-row"><span>Node ${i + 1}: &sigma;(${r.h1_z[i].toFixed(3)})</span><span class="val">= ${a.toFixed(4)}</span></div>`;
+  });
+  html += '</div>';
+
+  // Hidden 2
+  html += '<div class="math-section"><div class="math-section-title">Hidden Layer 2 (4 nodes)</div><hr class="math-divider">';
+  r.h2_a.forEach((a, i) => {
+    html += `<div class="math-row"><span>Node ${i + 1}: &sigma;(${r.h2_z[i].toFixed(3)})</span><span class="val">= ${a.toFixed(4)}</span></div>`;
+  });
+  html += '</div>';
+
+  // Output
+  html += '<div class="math-section"><div class="math-section-title">Output</div><hr class="math-divider">';
+  html += `<div class="math-row highlight"><span>Final Probability</span><span class="val">${(r.output * 100).toFixed(1)}%</span></div>`;
+  html += '</div>';
+
+  document.getElementById('mathContent').innerHTML = html;
+}
+
+// ===== NETWORK VISUALIZATION =====
+const netCanvas = document.getElementById('networkCanvas');
+const netCtx = netCanvas.getContext('2d');
+
+const LAYERS = [8, 6, 4, 1];
+const NODE_SIZES = [20, 17, 17, 30]; // radii
+const LAYER_COLORS = ['#6c63ff', '#8b7dff', '#4ecdc4', '#ffd93d'];
+
+function getNodePositions() {
+  const W = netCanvas.width / 2;
+  const H = netCanvas.height / 2;
+  const padX = 80;
+  const padY = 40;
+  const layerSpacing = (W - padX * 2) / (LAYERS.length - 1);
+
+  const positions = [];
+  LAYERS.forEach((count, li) => {
+    const x = padX + li * layerSpacing;
+    const totalH = H - padY * 2;
+    const spacing = count > 1 ? totalH / (count - 1) : 0;
+    const startY = count > 1 ? padY : H / 2;
+    const layerPos = [];
+    for (let i = 0; i < count; i++) {
+      layerPos.push({ x, y: startY + i * spacing });
+    }
+    positions.push(layerPos);
+  });
+  return positions;
+}
+
+function drawNetwork() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = netCanvas.getBoundingClientRect();
+  netCanvas.width = rect.width * dpr;
+  netCanvas.height = rect.height * dpr;
+  netCtx.scale(dpr, dpr);
+  netCanvas.style.width = rect.width + 'px';
+  netCanvas.style.height = rect.height + 'px';
+
+  const ctx = netCtx;
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  if (!currentResult) return;
+  const r = currentResult;
+  const activations = [r.inputs, r.h1_a, r.h2_a, [r.output]];
+  const weights = [W1, W2, W3];
+
+  // Recalculate node positions based on actual canvas size
+  const W = rect.width;
+  const H = rect.height;
+  const padX = 70;
+  const padY = 30;
+  const layerSpacing = (W - padX * 2) / (LAYERS.length - 1);
+
+  const positions = [];
+  LAYERS.forEach((count, li) => {
+    const x = padX + li * layerSpacing;
+    const totalH = H - padY * 2;
+    const spacing = count > 1 ? totalH / (count - 1) : 0;
+    const startY = count > 1 ? padY : H / 2;
+    const layerPos = [];
+    for (let i = 0; i < count; i++) {
+      layerPos.push({ x, y: startY + i * spacing });
+    }
+    positions.push(layerPos);
+  });
+
+  // Draw connections
+  for (let li = 0; li < LAYERS.length - 1; li++) {
+    const w = weights[li];
+    for (let i = 0; i < LAYERS[li]; i++) {
+      for (let j = 0; j < LAYERS[li + 1]; j++) {
+        const from = positions[li][i];
+        const to = positions[li + 1][j];
+        const wVal = Math.abs(w[i] ? w[i][j] || 0 : 0);
+        const signal = activations[li][i] * wVal;
+        const thickness = 1 + Math.min(wVal * 4, 4);
+        const alpha = 0.1 + Math.min(signal * 0.8, 0.7);
+
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.lineWidth = thickness;
+        ctx.strokeStyle = `rgba(108, 99, 255, ${alpha})`;
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Draw nodes
+  for (let li = 0; li < LAYERS.length; li++) {
+    for (let ni = 0; ni < LAYERS[li]; ni++) {
+      const pos = positions[li][ni];
+      const activation = activations[li][ni];
+      const radius = NODE_SIZES[li];
+      const color = LAYER_COLORS[li];
+
+      // Glow
+      const glowRadius = radius + 8 + activation * 12;
+      const glow = ctx.createRadialGradient(pos.x, pos.y, radius * 0.5, pos.x, pos.y, glowRadius);
+      glow.addColorStop(0, color.replace(')', `, ${0.2 + activation * 0.4})`).replace('rgb', 'rgba'));
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, glowRadius, 0, Math.PI * 2);
+      ctx.fillStyle = glow;
+      ctx.fill();
+
+      // Node circle
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+      const brightness = 0.3 + activation * 0.7;
+      ctx.fillStyle = adjustBrightness(color, brightness);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = activation * 20;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Border
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(255,255,255,${0.1 + activation * 0.3})`;
+      ctx.stroke();
+
+      // Label for input nodes
+      if (li === 0) {
+        ctx.fillStyle = `rgba(228,230,240,${0.6 + activation * 0.4})`;
+        ctx.font = '10px system-ui';
+        ctx.textAlign = 'right';
+        ctx.fillText(FACTORS[ni].name.split(' ')[0], pos.x - radius - 8, pos.y + 4);
+      }
+
+      // Label for output node
+      if (li === LAYERS.length - 1) {
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 13px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(Math.round(activation * 100) + '%', pos.x, pos.y + 5);
+      }
+    }
+  }
+
+  // Layer labels
+  const layerNames = ['Input', 'Hidden 1', 'Hidden 2', 'Output'];
+  ctx.font = '11px system-ui';
+  ctx.fillStyle = 'rgba(139,143,168,0.7)';
+  ctx.textAlign = 'center';
+  for (let li = 0; li < LAYERS.length; li++) {
+    const x = positions[li][0].x;
+    ctx.fillText(layerNames[li], x, H - 8);
+  }
+
+  // Store positions for hover detection
+  netCanvas._positions = positions;
+  netCanvas._activations = activations;
+}
+
+function adjustBrightness(hex, factor) {
+  // Convert hex to RGB, adjust, return
+  let r, g, b;
+  if (hex.startsWith('#')) {
+    const num = parseInt(hex.slice(1), 16);
+    r = (num >> 16) & 255;
+    g = (num >> 8) & 255;
+    b = num & 255;
+  } else {
+    return hex;
+  }
+  r = Math.round(r * factor);
+  g = Math.round(g * factor);
+  b = Math.round(b * factor);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ===== HOVER TOOLTIPS =====
+const tooltip = document.getElementById('tooltip');
+netCanvas.addEventListener('mousemove', (e) => {
+  if (!netCanvas._positions) return;
+  const rect = netCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  for (let li = 0; li < LAYERS.length; li++) {
+    for (let ni = 0; ni < LAYERS[li]; ni++) {
+      const pos = netCanvas._positions[li][ni];
+      const r = NODE_SIZES[li];
+      const dx = mx - pos.x, dy = my - pos.y;
+      if (dx * dx + dy * dy <= (r + 4) * (r + 4)) {
+        const act = netCanvas._activations[li][ni];
+        let text = '';
+        if (li === 0) {
+          text = `${FACTORS[ni].name}\nValue: ${sliderValues[ni]}%\nActivation: ${act.toFixed(4)}\nWeight: ${FACTORS[ni].weight}`;
+        } else if (li === LAYERS.length - 1) {
+          text = `Output Node\nProbability: ${(act * 100).toFixed(1)}%`;
+        } else {
+          text = `Hidden Layer ${li} Node ${ni + 1}\nActivation: ${act.toFixed(4)}`;
+        }
+        tooltip.style.display = 'block';
+        tooltip.style.left = (e.clientX + 14) + 'px';
+        tooltip.style.top = (e.clientY - 10) + 'px';
+        tooltip.innerHTML = text.replace(/\n/g, '<br>');
+        return;
+      }
+    }
+  }
+  tooltip.style.display = 'none';
+});
+netCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+// ===== SAVE / COMPARE =====
+const saveBtn = document.getElementById('saveBtn');
+const compareBtn = document.getElementById('compareBtn');
+const savePrompt = document.getElementById('savePrompt');
+const saveNameInput = document.getElementById('saveNameInput');
+const confirmSave = document.getElementById('confirmSave');
+const cancelSave = document.getElementById('cancelSave');
+const savedList = document.getElementById('savedList');
+const compareModal = document.getElementById('compareModal');
+const closeCompare = document.getElementById('closeCompare');
+const compareContent = document.getElementById('compareContent');
+
+saveBtn.addEventListener('click', () => {
+  if (savedConfigs.length >= 5) {
+    alert('Maximum 5 saved configurations. Remove one first.');
+    return;
+  }
+  saveNameInput.value = '';
+  savePrompt.classList.add('active');
+  saveNameInput.focus();
+});
+
+cancelSave.addEventListener('click', () => { savePrompt.classList.remove('active'); });
+
+saveNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmSave.click();
+  if (e.key === 'Escape') cancelSave.click();
+});
+
+confirmSave.addEventListener('click', () => {
+  const name = saveNameInput.value.trim() || `Config ${savedConfigs.length + 1}`;
+  savedConfigs.push({
+    name,
+    values: [...sliderValues],
+    probability: currentResult ? currentResult.output * 100 : 50,
+    timestamp: new Date().toLocaleTimeString()
+  });
+  savePrompt.classList.remove('active');
+  renderSavedList();
+});
+
+function renderSavedList() {
+  savedList.innerHTML = '';
+  savedConfigs.forEach((cfg, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'saved-chip';
+    chip.innerHTML = `
+      <span>${cfg.name}</span>
+      <span class="chip-prob">${cfg.probability.toFixed(1)}%</span>
+      <span class="chip-remove" data-idx="${i}">&times;</span>
+    `;
+    chip.addEventListener('click', (e) => {
+      if (e.target.classList.contains('chip-remove')) {
+        savedConfigs.splice(+e.target.dataset.idx, 1);
+        renderSavedList();
+        return;
+      }
+      animateSliders(cfg.values);
+    });
+    savedList.appendChild(chip);
+  });
+}
+
+compareBtn.addEventListener('click', () => {
+  if (savedConfigs.length < 2) {
+    alert('Save at least 2 configurations to compare.');
+    return;
+  }
+  renderCompare();
+  compareModal.classList.add('active');
+});
+
+closeCompare.addEventListener('click', () => { compareModal.classList.remove('active'); });
+compareModal.addEventListener('click', (e) => {
+  if (e.target === compareModal) compareModal.classList.remove('active');
+});
+
+function renderCompare() {
+  let html = '<table class="compare-table"><thead><tr><th>Factor</th>';
+  savedConfigs.forEach(c => { html += `<th>${c.name}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  FACTORS.forEach((f, i) => {
+    html += `<tr><td>${f.name}</td>`;
+    const vals = savedConfigs.map(c => c.values[i]);
+    const max = Math.max(...vals);
+    const min = Math.min(...vals);
+    savedConfigs.forEach(c => {
+      const v = c.values[i];
+      let cls = '';
+      if (vals.length > 1 && max !== min) {
+        if (v === max) cls = 'diff-high';
+        else if (v === min) cls = 'diff-low';
+      }
+      html += `<td class="${cls}">${v}%</td>`;
+    });
+    html += '</tr>';
+  });
+
+  // Probability row
+  html += '<tr style="border-top: 2px solid var(--border);"><td><strong>Probability</strong></td>';
+  savedConfigs.forEach(c => {
+    html += `<td class="prob-cell">${c.probability.toFixed(1)}%</td>`;
+  });
+  html += '</tr>';
+
+  // Recommendation row
+  html += '<tr><td><strong>Recommendation</strong></td>';
+  savedConfigs.forEach(c => {
+    html += `<td>${getRecommendation(c.probability)}</td>`;
+  });
+  html += '</tr>';
+
+  html += '</tbody></table>';
+  compareContent.innerHTML = html;
+}
+
+function getRecommendation(p) {
+  if (p > 70) return 'Graduate early';
+  if (p >= 50) return 'Consider it';
+  if (p >= 30) return 'Uncertain';
+  return 'Stay';
+}
+
+// ===== RESIZE =====
+window.addEventListener('resize', () => {
+  drawNetwork();
+  drawGauge();
+});
+
+// ===== INIT =====
+buildSliders();
+recalculate();
+</script>
+</body>
+</html>
