@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Readability Explorer — Typography & Contrast Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Source+Sans+Pro:wght@300;400;600&family=Nunito:wght@300;400;700&family=DM+Sans:wght@300;400;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- SVG Filters for Color Vision Deficiency Simulation -->
+  <svg id="svg-filters" xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden;">
+    <defs>
+      <filter id="filter-protanopia" color-interpolation-filters="linearRGB">
+        <feColorMatrix type="matrix" values="
+          0.56667  0.43333  0       0  0
+          0.55833  0.44167  0       0  0
+          0        0.24167  0.75833 0  0
+          0        0        0       1  0"/>
+      </filter>
+      <filter id="filter-deuteranopia" color-interpolation-filters="linearRGB">
+        <feColorMatrix type="matrix" values="
+          0.625  0.375  0      0  0
+          0.7    0.3    0      0  0
+          0      0.3    0.7    0  0
+          0      0      0      1  0"/>
+      </filter>
+      <filter id="filter-tritanopia" color-interpolation-filters="linearRGB">
+        <feColorMatrix type="matrix" values="
+          0.95   0.05   0       0  0
+          0      0.43333 0.56667 0  0
+          0      0.475  0.525   0  0
+          0      0      0       1  0"/>
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- Environmental Simulation Overlay -->
+  <div id="env-overlay" class="env-overlay" aria-hidden="true"></div>
+
+  <!-- Glaucoma Tunnel Vision Overlay -->
+  <div id="glaucoma-overlay" class="glaucoma-overlay hidden" aria-hidden="true"></div>
+
+  <div class="app-layout">
+
+    <!-- ═══════════════════════════════════════ LEFT PANEL ═══════════════════════════════════════ -->
+    <aside class="control-panel" id="control-panel" aria-label="Control panel">
+      <div class="panel-header">
+        <div class="panel-title">READABILITY EXPLORER</div>
+        <div class="panel-subtitle">Typography &amp; Contrast Lab</div>
+      </div>
+
+      <!-- ──────────── COLOR CONTROLS ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="true" aria-controls="section-color-body" data-toggle="section-color-body">
+          <span class="section-title">COLOR</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body" id="section-color-body">
+
+          <div class="subsection">
+            <div class="subsection-label">TEXT COLOR</div>
+            <div class="color-preview-row">
+              <div class="color-swatch" id="text-color-swatch" aria-hidden="true"></div>
+              <input type="text" class="hex-input" id="text-hex" value="#E0E0E0" maxlength="7" aria-label="Text color hex value" spellcheck="false">
+            </div>
+            <div class="rgb-row">
+              <label class="rgb-label" for="text-r">R</label>
+              <input type="range" id="text-r" min="0" max="255" value="224" aria-label="Text red channel (0-255)">
+              <input type="number" class="rgb-num" id="text-r-num" min="0" max="255" value="224" aria-label="Text red value">
+            </div>
+            <div class="rgb-row">
+              <label class="rgb-label" for="text-g">G</label>
+              <input type="range" id="text-g" min="0" max="255" value="224" aria-label="Text green channel (0-255)">
+              <input type="number" class="rgb-num" id="text-g-num" min="0" max="255" value="224" aria-label="Text green value">
+            </div>
+            <div class="rgb-row">
+              <label class="rgb-label" for="text-b">B</label>
+              <input type="range" id="text-b" min="0" max="255" value="224" aria-label="Text blue channel (0-255)">
+              <input type="number" class="rgb-num" id="text-b-num" min="0" max="255" value="224" aria-label="Text blue value">
+            </div>
+          </div>
+
+          <button class="swap-btn" id="swap-colors" aria-label="Swap text and background colors">⇄ SWAP COLORS</button>
+
+          <div class="subsection">
+            <div class="subsection-label">BACKGROUND COLOR</div>
+            <div class="color-preview-row">
+              <div class="color-swatch" id="bg-color-swatch" aria-hidden="true"></div>
+              <input type="text" class="hex-input" id="bg-hex" value="#121212" maxlength="7" aria-label="Background color hex value" spellcheck="false">
+            </div>
+            <div class="rgb-row">
+              <label class="rgb-label" for="bg-r">R</label>
+              <input type="range" id="bg-r" min="0" max="255" value="18" aria-label="Background red channel (0-255)">
+              <input type="number" class="rgb-num" id="bg-r-num" min="0" max="255" value="18" aria-label="Background red value">
+            </div>
+            <div class="rgb-row">
+              <label class="rgb-label" for="bg-g">G</label>
+              <input type="range" id="bg-g" min="0" max="255" value="18" aria-label="Background green channel (0-255)">
+              <input type="number" class="rgb-num" id="bg-g-num" min="0" max="255" value="18" aria-label="Background green value">
+            </div>
+            <div class="rgb-row">
+              <label class="rgb-label" for="bg-b">B</label>
+              <input type="range" id="bg-b" min="0" max="255" value="18" aria-label="Background blue channel (0-255)">
+              <input type="number" class="rgb-num" id="bg-b-num" min="0" max="255" value="18" aria-label="Background blue value">
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ──────────── TYPOGRAPHY CONTROLS ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="true" aria-controls="section-typography-body" data-toggle="section-typography-body">
+          <span class="section-title">TYPOGRAPHY</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body" id="section-typography-body">
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <span class="control-label">FONT SIZE</span>
+              <span class="control-value" id="font-size-display">16px / 12pt</span>
+            </div>
+            <input type="range" id="font-size" min="8" max="72" value="16" aria-label="Font size in pixels">
+            <div class="preset-buttons" role="group" aria-label="Font size presets">
+              <button class="size-preset-btn" data-size="11" aria-label="Caption size 11px">Caption</button>
+              <button class="size-preset-btn" data-size="16" aria-label="Body size 16px">Body</button>
+              <button class="size-preset-btn" data-size="20" aria-label="Large size 20px">Large</button>
+              <button class="size-preset-btn" data-size="28" aria-label="Heading size 28px">Heading</button>
+              <button class="size-preset-btn" data-size="42" aria-label="Display size 42px">Display</button>
+            </div>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <label class="control-label" for="font-family">FONT FAMILY</label>
+            </div>
+            <select id="font-family" aria-label="Font family selection">
+              <optgroup label="── Serif ──">
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Playfair Display', serif">Playfair Display</option>
+                <option value="'Lora', serif">Lora</option>
+                <option value="'Merriweather', serif">Merriweather</option>
+              </optgroup>
+              <optgroup label="── Sans-Serif ──">
+                <option value="'Helvetica Neue', Helvetica, Arial, sans-serif">Helvetica Neue</option>
+                <option value="'Source Sans Pro', sans-serif">Source Sans Pro</option>
+                <option value="'Nunito', sans-serif">Nunito</option>
+                <option value="'DM Sans', sans-serif">DM Sans</option>
+              </optgroup>
+              <optgroup label="── Monospace ──">
+                <option value="'Courier New', Courier, monospace">Courier New</option>
+                <option value="'Fira Code', monospace">Fira Code</option>
+                <option value="'IBM Plex Mono', monospace">IBM Plex Mono</option>
+              </optgroup>
+              <optgroup label="── Dyslexia-Friendly ──">
+                <option value="'OpenDyslexic', sans-serif">OpenDyslexic</option>
+                <option value="'Lexie Readable', sans-serif">Lexie Readable</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <span class="control-label">FONT WEIGHT</span>
+              <span class="control-value" id="font-weight-display">400 — Regular</span>
+            </div>
+            <input type="range" id="font-weight" min="100" max="900" step="100" value="400" aria-label="Font weight (100 thin to 900 black)">
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <span class="control-label">LINE HEIGHT</span>
+              <span class="control-value" id="line-height-display">1.5 — Normal</span>
+            </div>
+            <input type="range" id="line-height" min="0.8" max="3.0" step="0.1" value="1.5" aria-label="Line height (0.8 tight to 3.0 airy)">
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <span class="control-label">LETTER SPACING</span>
+              <span class="control-value" id="letter-spacing-display">0.00em — Normal</span>
+            </div>
+            <input type="range" id="letter-spacing" min="-0.10" max="0.50" step="0.01" value="0" aria-label="Letter spacing in em units">
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <span class="control-label">COLUMN WIDTH</span>
+              <span class="control-value" id="column-width-display">600px</span>
+            </div>
+            <input type="range" id="column-width" min="200" max="900" step="10" value="600" aria-label="Column width in pixels">
+          </div>
+
+          <div class="control-group">
+            <div class="control-label-row">
+              <span class="control-label">TEXT ALIGNMENT</span>
+            </div>
+            <div class="align-buttons" role="group" aria-label="Text alignment">
+              <button class="align-btn active" data-align="left" aria-pressed="true" aria-label="Align left">Left</button>
+              <button class="align-btn" data-align="center" aria-pressed="false" aria-label="Align center">Center</button>
+              <button class="align-btn" data-align="right" aria-pressed="false" aria-label="Align right">Right</button>
+              <button class="align-btn" data-align="justify" aria-pressed="false" aria-label="Justify text">Justify</button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ──────────── READABILITY METRICS ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="true" aria-controls="section-metrics-body" data-toggle="section-metrics-body">
+          <span class="section-title">METRICS</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body" id="section-metrics-body">
+          <div class="metrics-grid">
+
+            <div class="metric-card" id="metric-contrast">
+              <div class="metric-label">WCAG CONTRAST</div>
+              <div class="metric-value" id="contrast-ratio">—</div>
+              <div class="metric-badge" id="wcag-badge">—</div>
+              <div class="metric-bar-wrap"><div class="metric-bar" id="contrast-bar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="metric-luminance">
+              <div class="metric-label">LUMINANCE</div>
+              <div class="metric-value-row">
+                <span class="metric-sub-label">TEXT</span>
+                <span class="metric-sub-value" id="text-luminance">—</span>
+              </div>
+              <div class="metric-value-row">
+                <span class="metric-sub-label">BG</span>
+                <span class="metric-sub-value" id="bg-luminance">—</span>
+              </div>
+            </div>
+
+            <div class="metric-card" id="metric-cpl">
+              <div class="metric-label">CHARS / LINE</div>
+              <div class="metric-value" id="cpl-value">—</div>
+              <div class="metric-note" id="cpl-note">Ideal: 45–75 CPL</div>
+              <div class="metric-bar-wrap"><div class="metric-bar" id="cpl-bar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="metric-readability">
+              <div class="metric-label">READABILITY</div>
+              <div class="metric-value" id="readability-score">—</div>
+              <div class="metric-unit">/100</div>
+              <div class="metric-bar-wrap"><div class="metric-bar" id="readability-bar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="metric-oci">
+              <div class="metric-label">OPTICAL CLARITY</div>
+              <div class="metric-value" id="oci-value">—</div>
+              <div class="metric-unit">/10</div>
+              <div class="metric-bar-wrap"><div class="metric-bar" id="oci-bar" style="width:0%"></div></div>
+            </div>
+
+            <div class="metric-card" id="metric-apca">
+              <div class="metric-label">APCA SCORE</div>
+              <div class="metric-value" id="apca-value">—</div>
+              <div class="metric-unit">Lc</div>
+              <div class="metric-bar-wrap"><div class="metric-bar" id="apca-bar" style="width:0%"></div></div>
+            </div>
+
+          </div>
+          <div id="metrics-live" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+        </div>
+      </section>
+
+      <!-- ──────────── VISION SIMULATION ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="true" aria-controls="section-vision-body" data-toggle="section-vision-body">
+          <span class="section-title">VISION SIMULATION</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body" id="section-vision-body">
+          <div class="vision-grid" role="group" aria-label="Vision simulation modes">
+            <button class="vision-btn active" data-vision="none" aria-pressed="true"
+              title="Normal vision — no simulation applied">Normal</button>
+            <button class="vision-btn" data-vision="protanopia" aria-pressed="false"
+              title="Protanopia — difficulty distinguishing red from green; red appears darker">Protanopia</button>
+            <button class="vision-btn" data-vision="deuteranopia" aria-pressed="false"
+              title="Deuteranopia — most common color blindness; green channel affected">Deuteranopia</button>
+            <button class="vision-btn" data-vision="tritanopia" aria-pressed="false"
+              title="Tritanopia — blue-yellow color blindness; rare">Tritanopia</button>
+            <button class="vision-btn" data-vision="achromatopsia" aria-pressed="false"
+              title="Achromatopsia — complete color blindness; sees in grayscale only">Achroma.</button>
+            <button class="vision-btn" data-vision="low-contrast" aria-pressed="false"
+              title="Low contrast sensitivity — reduced ability to perceive fine contrast differences">Low Contrast</button>
+            <button class="vision-btn" data-vision="blur" aria-pressed="false"
+              title="Low vision / Blur — reduced visual acuity requiring high contrast and large text">Low Vision</button>
+            <button class="vision-btn" data-vision="cataracts" aria-pressed="false"
+              title="Cataracts — clouding of eye lens causing blurred, yellowed, hazy vision">Cataracts</button>
+            <button class="vision-btn" data-vision="glaucoma" aria-pressed="false"
+              title="Glaucoma — progressive tunnel vision from optic nerve damage; central vision preserved">Glaucoma</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ──────────── COLOR PRESETS ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="false" aria-controls="section-presets-body" data-toggle="section-presets-body">
+          <span class="section-title">COLOR PRESETS</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body collapsed" id="section-presets-body">
+          <div class="preset-category-label">ACCESSIBILITY</div>
+          <div class="preset-chips" id="preset-accessibility" role="list"></div>
+          <div class="preset-category-label">CLASSIC EDITORIAL</div>
+          <div class="preset-chips" id="preset-editorial" role="list"></div>
+          <div class="preset-category-label">MODERN UI</div>
+          <div class="preset-chips" id="preset-modern" role="list"></div>
+          <div class="preset-category-label">BAD PRACTICES ⚠</div>
+          <div class="preset-chips" id="preset-bad" role="list"></div>
+        </div>
+      </section>
+
+      <!-- ──────────── SAMPLE TEXT ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="false" aria-controls="section-sample-body" data-toggle="section-sample-body">
+          <span class="section-title">SAMPLE TEXT</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body collapsed" id="section-sample-body">
+          <div class="control-group">
+            <label class="control-label" for="sample-text-type">CONTENT TYPE</label>
+            <select id="sample-text-type" aria-label="Sample text content type">
+              <option value="lorem">Lorem Ipsum</option>
+              <option value="pangram">Pangram</option>
+              <option value="news">News Article</option>
+              <option value="technical">Technical Documentation</option>
+              <option value="legal">Legal Text</option>
+              <option value="childrens">Children's Book</option>
+              <option value="custom">Custom Text...</option>
+            </select>
+          </div>
+          <div class="control-group" id="custom-text-group" style="display:none;">
+            <label class="control-label" for="custom-text">YOUR TEXT</label>
+            <textarea id="custom-text" rows="5" placeholder="Type your custom text here..." aria-label="Custom text input"></textarea>
+          </div>
+          <div class="control-group">
+            <div class="control-label-row"><span class="control-label">TEXT CASE</span></div>
+            <div class="case-buttons" role="group" aria-label="Text case override">
+              <button class="case-btn active" data-case="default" aria-pressed="true">Default</button>
+              <button class="case-btn" data-case="upper" aria-pressed="false">UPPER</button>
+              <button class="case-btn" data-case="lower" aria-pressed="false">lower</button>
+              <button class="case-btn" data-case="title" aria-pressed="false">Title</button>
+              <button class="case-btn" data-case="small-caps" aria-pressed="false">Small Caps</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ──────────── READABILITY AIDS ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="false" aria-controls="section-aids-body" data-toggle="section-aids-body">
+          <span class="section-title">READABILITY AIDS</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body collapsed" id="section-aids-body">
+          <div class="toggle-row">
+            <label class="toggle-label" for="aid-bionic">
+              <input type="checkbox" id="aid-bionic" aria-label="Enable Bionic Reading">
+              <span class="toggle-switch" aria-hidden="true"></span>
+              <span class="toggle-name">Bionic Reading</span>
+            </label>
+            <span class="aid-desc">Bold anchors in first half of each word</span>
+          </div>
+          <div class="toggle-row">
+            <label class="toggle-label" for="aid-line-focus">
+              <input type="checkbox" id="aid-line-focus" aria-label="Enable Line Focus">
+              <span class="toggle-switch" aria-hidden="true"></span>
+              <span class="toggle-name">Line Focus</span>
+            </label>
+            <span class="aid-desc">Highlights the line under your cursor</span>
+          </div>
+          <div class="toggle-row">
+            <label class="toggle-label" for="aid-word-spacing">
+              <input type="checkbox" id="aid-word-spacing" aria-label="Enable Word Spacing Boost">
+              <span class="toggle-switch" aria-hidden="true"></span>
+              <span class="toggle-name">Word Spacing Boost</span>
+            </label>
+            <span class="aid-desc">+0.5em word spacing (WCAG 1.4.12)</span>
+          </div>
+          <div class="toggle-row">
+            <label class="toggle-label" for="aid-ruler">
+              <input type="checkbox" id="aid-ruler" aria-label="Enable Ruler Overlay">
+              <span class="toggle-switch" aria-hidden="true"></span>
+              <span class="toggle-name">Ruler Overlay</span>
+            </label>
+            <span class="aid-desc">Draggable horizontal reading guide</span>
+          </div>
+          <div class="toggle-row">
+            <label class="toggle-label" for="aid-reading-mask">
+              <input type="checkbox" id="aid-reading-mask" aria-label="Enable Reading Mask">
+              <span class="toggle-switch" aria-hidden="true"></span>
+              <span class="toggle-name">Reading Mask</span>
+            </label>
+            <span class="aid-desc">Dims text outside 3-line window</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ──────────── ENVIRONMENTAL SIMULATION ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="false" aria-controls="section-env-body" data-toggle="section-env-body">
+          <span class="section-title">ENVIRONMENT</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body collapsed" id="section-env-body">
+          <div class="control-group">
+            <label class="control-label" for="env-simulation">AMBIENT LIGHTING</label>
+            <select id="env-simulation" aria-label="Environmental lighting simulation">
+              <option value="none">Standard Screen</option>
+              <option value="sunlight">Bright Sunlight</option>
+              <option value="night">Night / Dark Room</option>
+              <option value="warm-lamp">Warm Lamp</option>
+              <option value="blue-light">Blue Light Filter</option>
+              <option value="fluorescent">Office Fluorescent</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- ──────────── COMPARISON MODE ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="false" aria-controls="section-compare-body" data-toggle="section-compare-body">
+          <span class="section-title">COMPARISON</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body collapsed" id="section-compare-body">
+          <div class="compare-controls">
+            <label class="toggle-label" for="compare-toggle">
+              <input type="checkbox" id="compare-toggle" aria-label="Enable comparison mode">
+              <span class="toggle-switch" aria-hidden="true"></span>
+              <span class="toggle-name">Comparison Mode</span>
+            </label>
+            <button class="export-btn" id="save-snapshot" aria-label="Save current settings as snapshot for comparison">Save Snapshot</button>
+          </div>
+          <div id="snapshot-status" class="snapshot-status">No snapshot saved.</div>
+        </div>
+      </section>
+
+      <!-- ──────────── EXPORT & SHARE ──────────── -->
+      <section class="control-section">
+        <button class="section-header" aria-expanded="false" aria-controls="section-export-body" data-toggle="section-export-body">
+          <span class="section-title">EXPORT &amp; SHARE</span>
+          <span class="section-arrow" aria-hidden="true">▾</span>
+        </button>
+        <div class="section-body collapsed" id="section-export-body">
+          <div class="export-buttons">
+            <button class="export-btn" id="copy-css" aria-label="Copy CSS snippet to clipboard">Copy CSS</button>
+            <button class="export-btn" id="share-link" aria-label="Encode settings into shareable URL">Share Link</button>
+            <button class="export-btn" id="export-report" aria-label="Export styled HTML report">Export Report</button>
+          </div>
+          <div id="export-feedback" class="export-feedback" aria-live="polite" aria-atomic="true"></div>
+        </div>
+      </section>
+
+      <!-- ──────────── HISTORY STRIP ──────────── -->
+      <div class="history-section" aria-label="Settings history">
+        <div class="history-label">HISTORY</div>
+        <div class="history-strip" id="history-strip" role="list" aria-label="Last 10 settings states — click to restore"></div>
+      </div>
+
+    </aside>
+
+    <!-- ═══════════════════════════════════════ RIGHT PANEL ═══════════════════════════════════════ -->
+    <main class="reading-area" id="reading-area" aria-label="Reading canvas">
+
+      <!-- Normal reading canvas -->
+      <div id="canvas-normal" class="canvas-container">
+        <div id="reading-canvas" class="reading-canvas" role="region" aria-label="Text preview canvas">
+          <div id="canvas-content" class="canvas-content">
+            <div id="canvas-text">Loading...</div>
+          </div>
+        </div>
+        <!-- Readability aid overlays -->
+        <div id="line-focus-overlay" class="line-focus-overlay hidden" aria-hidden="true"></div>
+        <div id="ruler-line" class="ruler-line hidden" aria-hidden="true" title="Drag to move reading guide"></div>
+        <div id="reading-mask-top" class="reading-mask reading-mask-top hidden" aria-hidden="true"></div>
+        <div id="reading-mask-bottom" class="reading-mask reading-mask-bottom hidden" aria-hidden="true"></div>
+      </div>
+
+      <!-- Comparison mode layout -->
+      <div id="canvas-comparison" class="canvas-comparison hidden" aria-label="Comparison mode — current vs snapshot">
+        <div class="comparison-panel">
+          <div class="comparison-label">CURRENT</div>
+          <div id="compare-canvas-current" class="reading-canvas compare-canvas"></div>
+          <div class="comparison-metrics" id="compare-metrics-current"></div>
+        </div>
+        <div class="comparison-divider" aria-hidden="true"></div>
+        <div class="comparison-panel">
+          <div class="comparison-label">SNAPSHOT</div>
+          <div id="compare-canvas-snapshot" class="reading-canvas compare-canvas"></div>
+          <div class="comparison-metrics" id="compare-metrics-snapshot"></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
