@@ -1,0 +1,1652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Desert Dash</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: #000; overflow: hidden; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<script>
+// ============================================================
+// === PART 1: CORE ENGINE ====================================
+// ============================================================
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+
+const CANVAS_W = 960;
+const CANVAS_H = 540;
+
+const GRAVITY           = 1800;
+const JUMP_FORCE        = -620;
+const DOUBLE_JUMP_FORCE = -520;
+const PLAYER_X_RATIO    = 0.15;
+const GROUND_HEIGHT     = 60;
+const COLLIDER_W        = 20;
+const COLLIDER_H        = 50;
+
+const SPEED_TIERS = [
+  { score:    0, speed: 350 },
+  { score:  500, speed: 450 },
+  { score: 1500, speed: 580 },
+  { score: 3000, speed: 720 },
+  { score: 5000, speed: 900 },
+];
+
+const COLORS = {
+  skyTop:        '#1a0a2e',
+  skyHorizon:    '#c2541b',
+  sun:           '#ffcc00',
+  dunesFar:      '#c8763a',
+  dunesMid:      '#a0522d',
+  dunesNear:     '#7a3b1e',
+  ground:        '#5c2a0e',
+  player:        '#ffffff',
+  obstacleTint1: '#ff6a00',
+  obstacleTint2: '#cc3300',
+  ui:            '#ffe0a0',
+};
+
+// ─── GLOBALS ──────────────────────────────────────────────────────────────────
+
+let canvas, ctx;
+
+const state = {
+  gameState:      'START',
+  score:          0,
+  bestScore:      0,
+  speed:          350,
+  gameTime:       0,
+  paused:         false,
+  frame:          0,
+  resetRequested: false,
+};
+
+// ─── CEILING EVENT ────────────────────────────────────────────────────────────
+// Periodic hazard: a sandstorm rises from the bottom — player must be at the
+// top of the screen (gravity-flipped to the ceiling) or die.
+
+const ceilingEvt = {
+  phase:       'idle',   // 'idle' | 'warning' | 'danger' | 'receding'
+  timer:       0,
+  nextIn:      20,       // seconds until the first event fires
+  WARNING_DUR: 2.5,      // seconds the warning lasts
+  DANGER_DUR:  3.0,      // seconds the wave takes to fully rise
+  RECEDE_DUR:  1.0,      // seconds the wave takes to fall back down
+  COOLDOWN:    22,       // seconds between events
+  riseY:       540,      // current top-edge Y of the rising death wave
+};
+
+// ─── UTILITIES ────────────────────────────────────────────────────────────────
+
+function lerp(a, b, t)    { return a + (b - a) * t; }
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+function rand(lo, hi)     { return lo + Math.random() * (hi - lo); }
+
+function lerpColor(c1, c2, t) {
+  return [Math.round(lerp(c1[0], c2[0], t)), Math.round(lerp(c1[1], c2[1], t)), Math.round(lerp(c1[2], c2[2], t))];
+}
+function rgbStr(c)      { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function rgbaStr(c, a)  { return `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`; }
+
+function seededRng(seed) {
+  let s = seed >>> 0;
+  return function () {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0;
+    return s / 0xFFFFFFFF;
+  };
+}
+
+function getTargetSpeed(score) {
+  const tiers = SPEED_TIERS;
+  if (score <= tiers[0].score) return tiers[0].speed;
+  if (score >= tiers[tiers.length - 1].score) return tiers[tiers.length - 1].speed;
+  for (let i = 1; i < tiers.length; i++) {
+    if (score <= tiers[i].score) {
+      const t = (score - tiers[i - 1].score) / (tiers[i].score - tiers[i - 1].score);
+      return lerp(tiers[i - 1].speed, tiers[i].speed, t);
+    }
+  }
+  return tiers[tiers.length - 1].speed;
+}
+
+// ─── AUDIO ENGINE ─────────────────────────────────────────────────────────────
+
+const audio = (() => {
+  let actx = null;
+  let musicPlaying = false;
+  let currentTempo = 120;
+  let _beatScheduler = null;
+  let _padOsc = null, _padLfo = null;
+
+  function getCtx() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    return actx;
+  }
+  function resume() {
+    const ac = getCtx();
+    if (ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function makeGain(ac, value, dest) {
+    const g = ac.createGain();
+    g.gain.setValueAtTime(value, ac.currentTime);
+    if (dest) g.connect(dest);
+    return g;
+  }
+  function sineChirp(ac, f0, f1, dur, vol, dest) {
+    const osc = ac.createOscillator();
+    const g   = makeGain(ac, vol, dest || ac.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(f0, ac.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(f1, ac.currentTime + dur);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+    osc.connect(g);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime + dur + 0.01);
+  }
+  function noiseBuffer(ac, secs) {
+    const len  = Math.ceil(ac.sampleRate * secs);
+    const buf  = ac.createBuffer(1, len, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  function jump()       { const ac = resume(); sineChirp(ac, 200, 400, 0.1, 0.25); }
+  function doubleJump() {
+    const ac = resume();
+    sineChirp(ac, 300, 500, 0.08, 0.25);
+    setTimeout(() => sineChirp(ac, 350, 550, 0.08, 0.18), 40);
+  }
+  function land() {
+    const ac = resume();
+    const osc = ac.createOscillator(); const g = makeGain(ac, 0.35, ac.destination);
+    osc.type = 'sine'; osc.frequency.setValueAtTime(80, ac.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(40, ac.currentTime + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.05);
+    osc.connect(g); osc.start(ac.currentTime); osc.stop(ac.currentTime + 0.06);
+  }
+  function death() {
+    const ac = resume();
+    const osc = ac.createOscillator(); const g = makeGain(ac, 0.4, ac.destination);
+    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(400, ac.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, ac.currentTime + 0.4);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.4);
+    osc.connect(g); osc.start(ac.currentTime); osc.stop(ac.currentTime + 0.45);
+    const src = ac.createBufferSource(); src.buffer = noiseBuffer(ac, 0.3);
+    const ng = makeGain(ac, 0.3, ac.destination);
+    ng.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.3);
+    src.connect(ng); src.start(ac.currentTime); src.stop(ac.currentTime + 0.31);
+  }
+  function scoreTick() {
+    const ac = resume();
+    const osc = ac.createOscillator(); const g = makeGain(ac, 0.1, ac.destination);
+    osc.type = 'square'; osc.frequency.setValueAtTime(1200, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.04);
+    osc.connect(g); osc.start(ac.currentTime); osc.stop(ac.currentTime + 0.05);
+  }
+  function flip() {
+    const ac = resume();
+    const src = ac.createBufferSource(); src.buffer = noiseBuffer(ac, 0.15);
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(800, ac.currentTime);
+    bp.frequency.exponentialRampToValueAtTime(200, ac.currentTime + 0.15);
+    bp.Q.value = 1.5;
+    const g = makeGain(ac, 0.2, ac.destination);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.15);
+    src.connect(bp); bp.connect(g);
+    src.start(ac.currentTime); src.stop(ac.currentTime + 0.16);
+  }
+
+  function startMusic() {
+    if (musicPlaying) return;
+    const ac = resume();
+    musicPlaying = true;
+    scheduleMusicLoop(ac);
+  }
+  function stopMusic() {
+    musicPlaying = false;
+    if (_beatScheduler) { clearTimeout(_beatScheduler); _beatScheduler = null; }
+    try { if (_padOsc) { _padOsc.stop(); _padOsc = null; } } catch(e) {}
+    try { if (_padLfo) { _padLfo.stop(); _padLfo = null; } } catch(e) {}
+  }
+  function setTempo(bpm) { currentTempo = bpm; }
+
+  function scheduleMusicLoop(ac) {
+    if (!musicPlaying) return;
+    const bpm     = currentTempo;
+    const beatDur = 60 / bpm;
+    const barDur  = beatDur * 4;
+    const now     = ac.currentTime;
+
+    const masterG = ac.createGain(); masterG.gain.setValueAtTime(0.4, now); masterG.connect(ac.destination);
+
+    const padOsc = ac.createOscillator(); const padG = ac.createGain();
+    const lfo = ac.createOscillator();    const lfoG = ac.createGain();
+    padOsc.type = 'sine'; padOsc.frequency.setValueAtTime(110, now);
+    lfo.type = 'sine'; lfo.frequency.setValueAtTime(0.3, now); lfoG.gain.setValueAtTime(15, now);
+    padG.gain.setValueAtTime(0.18, now);
+    lfo.connect(lfoG); lfoG.connect(padOsc.frequency);
+    padOsc.connect(padG); padG.connect(masterG);
+    lfo.start(now); padOsc.start(now);
+    _padOsc = padOsc; _padLfo = lfo;
+
+    function scheduleBar(barStart) {
+      if (!musicPlaying) return;
+      for (let beat = 0; beat < 4; beat++) {
+        const t = barStart + beat * beatDur;
+        const hhSrc = ac.createBufferSource(); hhSrc.buffer = noiseBuffer(ac, 0.05);
+        const hhBp = ac.createBiquadFilter(); hhBp.type = 'bandpass'; hhBp.frequency.setValueAtTime(8000, t); hhBp.Q.value = 0.8;
+        const hhG = ac.createGain(); hhG.gain.setValueAtTime(beat % 2 === 0 ? 0.15 : 0.08, t);
+        hhG.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+        hhSrc.connect(hhBp); hhBp.connect(hhG); hhG.connect(masterG);
+        hhSrc.start(t); hhSrc.stop(t + 0.06);
+        if (beat === 0 || beat === 2) {
+          const ko = ac.createOscillator(); const kg = ac.createGain();
+          ko.type = 'sine'; ko.frequency.setValueAtTime(150, t); ko.frequency.exponentialRampToValueAtTime(40, t + 0.08);
+          kg.gain.setValueAtTime(0.6, t); kg.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+          ko.connect(kg); kg.connect(masterG); ko.start(t); ko.stop(t + 0.14);
+        }
+        if (beat === 1 || beat === 3) {
+          const bo = ac.createOscillator(); const bg = ac.createGain();
+          bo.type = 'triangle'; bo.frequency.setValueAtTime(beat === 1 ? 82 : 98, t);
+          bg.gain.setValueAtTime(0.2, t); bg.gain.exponentialRampToValueAtTime(0.0001, t + beatDur * 0.8);
+          bo.connect(bg); bg.connect(masterG); bo.start(t); bo.stop(t + beatDur);
+        }
+      }
+      const nextBar = barStart + barDur;
+      const delay   = Math.max(0, (nextBar - ac.currentTime - 0.1) * 1000);
+      _beatScheduler = setTimeout(() => scheduleBar(nextBar), delay);
+    }
+    scheduleBar(now + 0.05);
+  }
+
+  return { jump, doubleJump, land, death, scoreTick, flip, startMusic, stopMusic, setTempo };
+})();
+
+// ─── POOL ─────────────────────────────────────────────────────────────────────
+
+class Pool {
+  constructor(factory) {
+    this._factory  = factory || (() => ({}));
+    this._inactive = [];
+    this.active    = [];
+  }
+  acquire() {
+    const obj = this._inactive.length > 0 ? this._inactive.pop() : this._factory();
+    this.active.push(obj);
+    return obj;
+  }
+  // alias used by Part 2
+  get() { return this.acquire(); }
+  release(obj) {
+    const idx = this.active.indexOf(obj);
+    if (idx !== -1) { this.active.splice(idx, 1); this._inactive.push(obj); }
+  }
+  releaseAll() {
+    while (this.active.length > 0) this._inactive.push(this.active.pop());
+  }
+}
+
+// ─── PLAYER ───────────────────────────────────────────────────────────────────
+
+class Player {
+  constructor() { this.reset(); }
+
+  reset() {
+    this.x           = CANVAS_W * PLAYER_X_RATIO;
+    this.groundY     = CANVAS_H - GROUND_HEIGHT;
+    this.y           = this.groundY;
+    this.vy          = 0;
+    this.grounded    = true;
+    this.jumpCount   = 0;
+    this.gravDir     = 1;
+    this.dead        = false;
+    this.animTime    = 0;
+    this.squashTimer = 0;
+    this.scaleX      = 1;
+    this.scaleY      = 1;
+    this.flipping    = false;
+    this.flipAngle   = 0;
+    this.deathParts  = [];
+    this.deathTimer  = 0;
+    this.trail       = [];
+    this.trailMax    = 5;
+  }
+
+  jump() {
+    if (this.dead) return;
+    if (this.grounded || this.jumpCount === 0) {
+      this.vy = JUMP_FORCE * this.gravDir; this.grounded = false; this.jumpCount = 1; audio.jump();
+    } else if (this.jumpCount === 1) {
+      this.vy = DOUBLE_JUMP_FORCE * this.gravDir; this.jumpCount = 2; audio.doubleJump();
+    }
+  }
+
+  gravityFlip() {
+    if (this.dead) return;
+    this.gravDir *= -1; this.flipping = true; this.flipAngle = 0; this.jumpCount = 0; this.grounded = false; audio.flip();
+  }
+
+  die() {
+    if (this.dead) return;
+    this.dead = true; this.deathTimer = 0; this.deathParts = [];
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      this.deathParts.push({ x: this.x, y: this.y - 25, vx: Math.cos(a) * rand(60, 180), vy: Math.sin(a) * rand(60, 180), len: rand(8, 20), angle: a });
+    }
+  }
+
+  update(dt) {
+    this.animTime += dt;
+    if (this.dead) {
+      this.deathTimer += dt;
+      const g = GRAVITY * this.gravDir;
+      for (const p of this.deathParts) {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vy += g * dt * 0.5; p.vx *= Math.pow(0.92, dt * 60);
+      }
+      return;
+    }
+    this.vy += GRAVITY * this.gravDir * dt;
+    if (this.flipping) {
+      this.flipAngle += Math.PI * 6 * dt;
+      if (this.flipAngle >= Math.PI * 2) { this.flipAngle = 0; this.flipping = false; }
+    }
+    this.y += this.vy * dt;
+    const topY = GROUND_HEIGHT;
+    const botY = CANVAS_H - GROUND_HEIGHT;
+    if (this.gravDir === 1) {
+      if (this.y >= botY) {
+        if (this.vy > 0) { this.squashTimer = 6; audio.land(); }
+        this.y = botY; this.vy = 0; this.grounded = true; this.jumpCount = 0;
+      }
+    }
+    // Flipped mode: ceiling is now cloud platforms — handled by checkCloudLanding()
+    if (this.squashTimer > 0) {
+      this.squashTimer--;
+      const t = this.squashTimer / 6;
+      this.scaleY = lerp(1, 0.7, t); this.scaleX = lerp(1, 1.3, t);
+    } else { this.scaleX = 1; this.scaleY = 1; }
+    this.trail.push({ x: this.x, y: this.y });
+    if (this.trail.length > this.trailMax) this.trail.shift();
+  }
+
+  draw(ctx) {
+    if (this.dead) { this._drawDeath(ctx); return; }
+    for (let i = 0; i < this.trail.length; i++) {
+      const alpha = (i + 1) / (this.trail.length + 1) * 0.3;
+      const tp = this.trail[i];
+      ctx.save(); ctx.globalAlpha = alpha; ctx.translate(tp.x, tp.y); ctx.scale(this.scaleX, this.scaleY);
+      this._drawFigure(ctx, true); ctx.restore();
+    }
+    ctx.save(); ctx.translate(this.x, this.y);
+    if (this.flipping) ctx.rotate(this.flipAngle * this.gravDir);
+    ctx.scale(this.scaleX, this.scaleY * this.gravDir);
+    this._drawFigure(ctx, false); ctx.restore();
+  }
+
+  _drawFigure(ctx, isTrail) {
+    const t        = this.animTime;
+    const speed    = state.speed;
+    const airborne = !this.grounded;
+    const runFreq  = speed / 120;
+    const limbSwing  = Math.sin(t * runFreq * Math.PI * 2);
+    const limbOffset = Math.cos(t * runFreq * Math.PI * 2);
+
+    ctx.strokeStyle = COLORS.player; ctx.fillStyle = COLORS.player;
+    ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+
+    const headY  = -50, headR = 10;
+    ctx.beginPath(); ctx.arc(0, headY, headR, 0, Math.PI * 2); ctx.fill();
+
+    const bodyTop = headY + headR, bodyBot = bodyTop + 25;
+    ctx.beginPath(); ctx.moveTo(0, bodyTop); ctx.lineTo(0, bodyBot); ctx.stroke();
+
+    const midBody = (bodyTop + bodyBot) / 2;
+
+    if (airborne) {
+      ctx.beginPath(); ctx.moveTo(0, midBody); ctx.lineTo(-14, midBody - 14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, midBody); ctx.lineTo( 14, midBody - 14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, bodyBot); ctx.lineTo(-10, bodyBot + 10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, bodyBot); ctx.lineTo( 10, bodyBot + 10); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.moveTo(0, midBody); ctx.lineTo(-12 + limbSwing * 6, midBody + 10 + limbSwing * 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, midBody); ctx.lineTo( 12 - limbSwing * 6, midBody + 10 - limbSwing * 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, bodyBot); ctx.lineTo(-10 - limbSwing * 8, bodyBot + 18 + limbOffset * 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, bodyBot); ctx.lineTo( 10 + limbSwing * 8, bodyBot + 18 - limbOffset * 4); ctx.stroke();
+    }
+  }
+
+  _drawDeath(ctx) {
+    if (this.deathTimer >= 1.5) return;
+    const alpha = 1 - this.deathTimer / 1.5;
+    ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = COLORS.player; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    for (const p of this.deathParts) {
+      const ex = p.x + Math.cos(p.angle) * p.len, ey = p.y + Math.sin(p.angle) * p.len;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  getAABB() {
+    return { x: this.x - COLLIDER_W / 2, y: this.y - COLLIDER_H, w: COLLIDER_W, h: COLLIDER_H };
+  }
+}
+
+// ─── INPUT ────────────────────────────────────────────────────────────────────
+
+const input = {
+  jumpPressed: false, downPressed: false, anyPressed: false,
+  _jumpQueued: false, _downQueued: false, _anyQueued: false,
+};
+
+(function setupInput() {
+  window.addEventListener('keydown', (e) => {
+    const k = e.code || e.key;
+    if (k === 'Space' || k === 'ArrowUp' || k === 'KeyW') { e.preventDefault(); input._jumpQueued = true; input._anyQueued = true; }
+    if (k === 'ArrowDown' || k === 'KeyS') { e.preventDefault(); input._downQueued = true; input._anyQueued = true; }
+    if (k === 'Enter') { input._anyQueued = true; }
+  });
+  window.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const touch = e.changedTouches[0];
+    if (touch.clientX < window.innerWidth / 2) input._jumpQueued = true; else input._downQueued = true;
+    input._anyQueued = true;
+  }, { passive: false });
+  window.addEventListener('mousedown', (e) => { e.preventDefault(); input._jumpQueued = true; input._anyQueued = true; });
+})();
+
+function pollInput() {
+  input.jumpPressed = input._jumpQueued; input.downPressed = input._downQueued; input.anyPressed = input._anyQueued;
+  input._jumpQueued = false; input._downQueued = false; input._anyQueued = false;
+}
+
+// ─── PLAYER SINGLETON ─────────────────────────────────────────────────────────
+
+const player = new Player();
+
+// ─── GAME LOOP (stubs — overridden by Part 3) ─────────────────────────────────
+
+const FIXED_DT     = 1 / 60;
+const MAX_DELTA    = 0.1;
+let   _lastTime    = null;
+let   _accumulator = 0;
+let   _prevScore   = 0;
+
+function gameLoop(timestamp) {
+  if (state.paused) { _lastTime = null; requestAnimationFrame(gameLoop); return; }
+  if (_lastTime === null) _lastTime = timestamp;
+  const raw   = (timestamp - _lastTime) / 1000;
+  _lastTime   = timestamp;
+  const delta = Math.min(raw, MAX_DELTA);
+  _accumulator += delta;
+  while (_accumulator >= FIXED_DT) { updateGame(FIXED_DT); _accumulator -= FIXED_DT; }
+  renderGame();
+  requestAnimationFrame(gameLoop);
+}
+
+// Stub implementations — overridden at the bottom by Part 3
+function updateGame(dt) { pollInput(); state.gameTime += dt; }
+function renderGame()   { /* overridden */ }
+
+// ─── INIT CANVAS ──────────────────────────────────────────────────────────────
+
+function initGame() {
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.width  = CANVAS_W; canvas.height = CANVAS_H;
+    canvas.style.display     = 'block';
+    canvas.style.touchAction = 'none';
+    canvas.style.cursor      = 'none';
+    function resizeCanvas() {
+      const scale = Math.min(window.innerWidth / CANVAS_W, window.innerHeight / CANVAS_H);
+      canvas.style.width  = (CANVAS_W * scale) + 'px';
+      canvas.style.height = (CANVAS_H * scale) + 'px';
+      canvas.style.position = 'absolute';
+      canvas.style.left = ((window.innerWidth  - CANVAS_W * scale) / 2) + 'px';
+      canvas.style.top  = ((window.innerHeight - CANVAS_H * scale) / 2) + 'px';
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    document.body.style.background = '#000';
+    document.body.style.overflow   = 'hidden';
+    document.body.appendChild(canvas);
+    ctx = canvas.getContext('2d');
+  }
+  state.gameState = 'START'; state.score = 0; state.speed = 350; state.gameTime = 0; state.frame = 0; state.paused = false;
+  _lastTime = null; _accumulator = 0; _prevScore = 0;
+  player.reset();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { state.paused = true; audio.stopMusic(); }
+    else { state.paused = false; _lastTime = null; if (state.gameState === 'RUNNING') audio.startMusic(); }
+  }, { once: false });
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// === PART 2: WORLD & VISUALS ================================
+// ============================================================
+
+// ─── Seeded RNG (Part 2 version — different name from Part 1's seededRng) ────
+
+function seededRNG(seed) {
+  let s = seed;
+  return function () {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+
+// ─── Parallax Layers ──────────────────────────────────────────────────────────
+
+const layers = [];
+
+// ─── Day / Night cycle data ────────────────────────────────────────────────────
+// Each phase: score threshold, sky top/bottom RGB, star opacity, body (sun|moon),
+// body Y (0=top,1=bottom), body radius, body colour, glow colour,
+// ambient tint RGB + alpha applied over the whole scene.
+const SKY_PHASES = [
+  // Dawn  – deep violet, orange horizon, sun low on horizon
+  { score:    0, topC: [26,10,46],    botC: [194,84,27],   starsA: 0.60, bodyType: 'sun',  bodyY: 0.86, bodyR: 34, bodyC: [255,140,0],   glowC: [255,100,0],   ambC: [0,0,0],      ambA: 0.00 },
+  // Morning – warm blue sky, golden horizon, sun rising
+  { score:  600, topC: [18,60,112],   botC: [245,185,105], starsA: 0.00, bodyType: 'sun',  bodyY: 0.42, bodyR: 36, bodyC: [255,230,70],  glowC: [255,210,80],  ambC: [255,200,80], ambA: 0.04 },
+  // Day     – vivid blue sky, blazing sun overhead
+  { score: 1500, topC: [0,100,200],   botC: [135,206,235], starsA: 0.00, bodyType: 'sun',  bodyY: 0.10, bodyR: 40, bodyC: [255,255,180], glowC: [255,250,200], ambC: [255,220,140],ambA: 0.10 },
+  // Sunset  – violet top, fiery orange/red horizon, oversized sun
+  { score: 2800, topC: [30,8,50],     botC: [255,100,35],  starsA: 0.22, bodyType: 'sun',  bodyY: 0.80, bodyR: 44, bodyC: [255,60,0],    glowC: [255,60,0],    ambC: [80,10,0],    ambA: 0.18 },
+  // Night   – near-black sky, crescent moon, stars blazing
+  { score: 4500, topC: [0,0,14],      botC: [5,5,48],      starsA: 1.00, bodyType: 'moon', bodyY: 0.22, bodyR: 30, bodyC: [235,240,255], glowC: [200,215,255], ambC: [0,5,45],     ambA: 0.52 },
+];
+
+function getSkyState(score) {
+  const p = SKY_PHASES;
+  if (score <= p[0].score) return { t: 0, a: p[0], b: p[0] };
+  if (score >= p[p.length - 1].score) return { t: 1, a: p[p.length - 1], b: p[p.length - 1] };
+  for (let i = 1; i < p.length; i++) {
+    if (score <= p[i].score) {
+      const t = (score - p[i - 1].score) / (p[i].score - p[i - 1].score);
+      return { t, a: p[i - 1], b: p[i] };
+    }
+  }
+  return { t: 1, a: p[p.length - 1], b: p[p.length - 1] };
+}
+
+function buildLayers() {
+  layers.length = 0;
+  const rng = seededRNG(42);
+  const W = CANVAS_W * 2;
+  const H = CANVAS_H;
+
+  // Layer 0: Sky gradient
+  (function () {
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+    const cx = oc.getContext('2d');
+    const grad = cx.createLinearGradient(0, 0, 0, H * 0.75);
+    grad.addColorStop(0, '#1a0a2e'); grad.addColorStop(0.6, '#5c1a3a'); grad.addColorStop(1, '#c2541b');
+    cx.fillStyle = grad; cx.fillRect(0, 0, W, H);
+    layers.push({ canvas: oc, scrollX: 0, speed: 0 });
+  })();
+
+  // Layer 1: Stars
+  (function () {
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+    const cx = oc.getContext('2d'); cx.clearRect(0, 0, W, H);
+    for (let i = 0; i < 80; i++) {
+      const sx = rng() * W, sy = rng() * H * 0.55, sr = rng() * 1.5 + 0.5, alpha = rng() * 0.5 + 0.5;
+      cx.beginPath(); cx.arc(sx, sy, sr, 0, Math.PI * 2); cx.fillStyle = `rgba(255,255,240,${alpha})`; cx.fill();
+    }
+    layers.push({ canvas: oc, scrollX: 0, speed: 0.05 });
+  })();
+
+  // Layer 2: Sun/Moon
+  (function () {
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+    const cx = oc.getContext('2d'); cx.clearRect(0, 0, W, H);
+    const sx = W * 0.78, sy = H * 0.18, radius = 38;
+    const glow = cx.createRadialGradient(sx - radius * 0.25, sy - radius * 0.25, radius * 0.05, sx, sy, radius * 2.5);
+    glow.addColorStop(0, 'rgba(255,220,50,0.55)'); glow.addColorStop(0.5, 'rgba(255,160,20,0.2)'); glow.addColorStop(1, 'rgba(255,100,0,0)');
+    cx.fillStyle = glow; cx.beginPath(); cx.arc(sx, sy, radius * 2.5, 0, Math.PI * 2); cx.fill();
+    cx.beginPath(); cx.arc(sx, sy, radius, 0, Math.PI * 2); cx.fillStyle = '#ffcc00'; cx.fill();
+    cx.beginPath(); cx.arc(sx, sy, radius * 0.7, 0, Math.PI * 2); cx.fillStyle = '#fff7a0'; cx.fill();
+    layers.push({ canvas: oc, scrollX: 0, speed: 0.02 });
+  })();
+
+  // Layer 3: Far dunes
+  (function () {
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+    const cx = oc.getContext('2d'); cx.clearRect(0, 0, W, H);
+    const baseY = H * 0.68;
+    cx.beginPath(); cx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 4) {
+      const y = baseY - Math.sin(x * 0.007 + rng() * 0.3) * 38 - Math.sin(x * 0.013 + 1.2) * 22 - Math.sin(x * 0.003) * 50;
+      cx.lineTo(x, y);
+    }
+    cx.lineTo(W, H); cx.closePath();
+    const dg = cx.createLinearGradient(0, baseY - 110, 0, H);
+    dg.addColorStop(0, '#c8763a'); dg.addColorStop(1, '#a05a28');
+    cx.fillStyle = dg; cx.fill();
+    layers.push({ canvas: oc, scrollX: 0, speed: 0.15 });
+  })();
+
+  // Layer 4: Mid dunes
+  (function () {
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+    const cx = oc.getContext('2d'); cx.clearRect(0, 0, W, H);
+    const baseY = H * 0.75;
+    cx.beginPath(); cx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 4) {
+      const y = baseY - Math.sin(x * 0.009 + rng() * 0.5) * 55 - Math.sin(x * 0.018 + 2.5) * 30 - Math.cos(x * 0.004 + 0.8) * 45;
+      cx.lineTo(x, y);
+    }
+    cx.lineTo(W, H); cx.closePath();
+    const dg = cx.createLinearGradient(0, baseY - 130, 0, H);
+    dg.addColorStop(0, '#a0522d'); dg.addColorStop(1, '#7a3520');
+    cx.fillStyle = dg; cx.fill();
+    layers.push({ canvas: oc, scrollX: 0, speed: 0.35 });
+  })();
+
+  // Layer 5: Cacti silhouettes
+  (function () {
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+    const cx = oc.getContext('2d'); cx.clearRect(0, 0, W, H);
+    const groundY = H * 0.80;
+    for (let i = 0; i < 12; i++) { drawSilhouetteCactus(cx, rng() * W, groundY, rng() * 0.6 + 0.6); }
+    layers.push({ canvas: oc, scrollX: 0, speed: 0.5 });
+  })();
+
+  // Layer 6: Near dunes
+  (function () {
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+    const cx = oc.getContext('2d'); cx.clearRect(0, 0, W, H);
+    const baseY = H * 0.83;
+    cx.beginPath(); cx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 4) {
+      const y = baseY - Math.sin(x * 0.011 + rng() * 0.4) * 40 - Math.sin(x * 0.022 + 1.0) * 20 - Math.cos(x * 0.005 + 2.1) * 30;
+      cx.lineTo(x, y);
+    }
+    cx.lineTo(W, H); cx.closePath();
+    const dg = cx.createLinearGradient(0, baseY - 90, 0, H);
+    dg.addColorStop(0, '#7a3b1e'); dg.addColorStop(1, '#5c2a0e');
+    cx.fillStyle = dg; cx.fill();
+    layers.push({ canvas: oc, scrollX: 0, speed: 0.7 });
+  })();
+
+  // Layer 7: Ground platform
+  (function () {
+    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
+    const cx = oc.getContext('2d'); cx.clearRect(0, 0, W, H);
+    const groundY = H * 0.87;
+    cx.fillStyle = '#5c2a0e'; cx.fillRect(0, groundY, W, H - groundY);
+    const eg = cx.createLinearGradient(0, groundY, 0, groundY + 12);
+    eg.addColorStop(0, '#c8763a'); eg.addColorStop(1, '#7a3b1e');
+    cx.fillStyle = eg; cx.fillRect(0, groundY, W, 12);
+    cx.strokeStyle = 'rgba(200,118,58,0.18)'; cx.lineWidth = 1;
+    for (let lx = 0; lx < W; lx += 28 + Math.floor(rng() * 20)) {
+      cx.beginPath(); cx.moveTo(lx, groundY + 3); cx.lineTo(lx + 14, groundY + 8); cx.stroke();
+    }
+    layers.push({ canvas: oc, scrollX: 0, speed: 1.0 });
+  })();
+}
+
+function drawSilhouetteCactus(cx, x, groundY, scale) {
+  cx.save(); cx.translate(x, groundY); cx.scale(scale, scale);
+  cx.fillStyle = 'rgba(20,8,35,0.85)';
+  const trunk = 18, height = 90;
+  cx.fillRect(-trunk / 2, -height, trunk, height);
+  cx.restore();
+}
+
+// ─── Sprite Atlas (pre-rendered obstacle shapes) ──────────────────────────────
+
+let atlasCanvas = document.createElement('canvas');
+atlasCanvas.width = 512; atlasCanvas.height = 256;
+
+const SPRITES = {
+  boulderSm:  { x: 0,   y: 0,   w: 60,  h: 60  },
+  boulderMd:  { x: 65,  y: 0,   w: 90,  h: 90  },
+  boulderLg:  { x: 160, y: 0,   w: 120, h: 120 },
+  spikeTrap:  { x: 0,   y: 130, w: 180, h: 40  },
+  cactus:     { x: 285, y: 0,   w: 50,  h: 120 },
+  tumbleweed: { x: 340, y: 0,   w: 60,  h: 60  },
+  dustDevil:  { x: 405, y: 0,   w: 70,  h: 100 },
+  sandPit:    { x: 185, y: 130, w: 200, h: 30  },
+};
+
+function buildAtlas() {
+  const cx = atlasCanvas.getContext('2d');
+  cx.clearRect(0, 0, atlasCanvas.width, atlasCanvas.height);
+
+  function drawBoulder(bx, by, bw) {
+    const r = bw / 2, ox = bx + r, oy = by + r;
+    const bg = cx.createRadialGradient(ox - r * 0.25, oy - r * 0.25, r * 0.05, ox, oy, r);
+    bg.addColorStop(0, '#b07840'); bg.addColorStop(0.6, '#7a4e28'); bg.addColorStop(1, '#4a2e10');
+    cx.beginPath(); cx.arc(ox, oy, r - 1, 0, Math.PI * 2); cx.fillStyle = bg; cx.fill();
+    cx.strokeStyle = '#3a1e08'; cx.lineWidth = 1.5; cx.stroke();
+    const crng = seededRNG(bw * 7 + bw);
+    cx.strokeStyle = 'rgba(40,20,5,0.55)'; cx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const angle = crng() * Math.PI * 2, len = r * (crng() * 0.4 + 0.25);
+      cx.beginPath(); cx.moveTo(ox + Math.cos(angle) * r * 0.1, oy + Math.sin(angle) * r * 0.1);
+      cx.lineTo(ox + Math.cos(angle) * len, oy + Math.sin(angle) * len); cx.stroke();
+    }
+  }
+  const bs = SPRITES.boulderSm; drawBoulder(bs.x, bs.y, bs.w);
+  const bm = SPRITES.boulderMd; drawBoulder(bm.x, bm.y, bm.w);
+  const bl = SPRITES.boulderLg; drawBoulder(bl.x, bl.y, bl.w);
+}
+
+// ─── Particle class ───────────────────────────────────────────────────────────
+
+class Particle {
+  constructor() { this.active = false; this.x = 0; this.y = 0; this.vx = 0; this.vy = 0; this.color = '#c8a060'; this.life = 0; this.maxLife = 1; this.size = 4; this.gravity = 320; }
+  reset(x, y, vx, vy, color, life) {
+    this.active = true; this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.color = color || '#c8a060'; this.life = life || 0.75; this.maxLife = this.life;
+    this.size = 3 + Math.random() * 3; this.gravity = 280 + Math.random() * 80;
+  }
+  update(dt) {
+    if (!this.active) return;
+    this.vy += this.gravity * dt; this.x += this.vx * dt; this.y += this.vy * dt; this.life -= dt;
+    if (this.life <= 0) this.active = false;
+  }
+  draw(ctx) {
+    if (!this.active) return;
+    const alpha = Math.max(0, this.life / this.maxLife), sz = this.size * (0.5 + alpha * 0.5);
+    ctx.save(); ctx.globalAlpha = alpha * 0.9; ctx.fillStyle = this.color;
+    if (this.size > 4.5) { ctx.fillRect(this.x - sz / 2, this.y - sz / 2, sz, sz); }
+    else { ctx.beginPath(); ctx.arc(this.x, this.y, sz / 2, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+}
+
+const particlePool = new Pool(() => new Particle());
+
+function spawnParticles(x, y, count, color) {
+  for (let i = 0; i < count; i++) {
+    const p = particlePool.acquire();
+    const angle = Math.random() * Math.PI * 2, speed = 80 + Math.random() * 200;
+    p.reset(x, y, Math.cos(angle) * speed, Math.sin(angle) * speed - Math.random() * 80, color || '#c8a060', 0.45 + Math.random() * 0.55);
+  }
+}
+
+function updateParticles(dt) {
+  const toRelease = [];
+  for (let i = 0; i < particlePool.active.length; i++) {
+    const p = particlePool.active[i];
+    p.update(dt);
+    if (!p.active) toRelease.push(p);
+  }
+  for (const p of toRelease) particlePool.release(p);
+}
+
+function drawParticles(ctx) {
+  for (let i = 0; i < particlePool.active.length; i++) {
+    const p = particlePool.active[i];
+    if (p.active) p.draw(ctx);
+  }
+}
+
+// ─── World rendering ──────────────────────────────────────────────────────────
+
+let _sunPulseTime = 0;
+let _lastDrawDt   = 0.016;
+
+function drawWorld(ctx) {
+  _sunPulseTime += _lastDrawDt;
+  const scrollSpeed = state.speed || 200;
+  const score = state.score;
+
+  // ── Compute time-of-day sky state ─────────────────────────────────────────
+  const sky  = getSkyState(score);
+  const t    = sky.t;
+  const topC   = lerpColor(sky.a.topC,  sky.b.topC,  t);
+  const botC   = lerpColor(sky.a.botC,  sky.b.botC,  t);
+  const bodyY  = lerp(sky.a.bodyY,  sky.b.bodyY,  t);
+  const bodyR  = lerp(sky.a.bodyR,  sky.b.bodyR,  t);
+  const bodyC  = lerpColor(sky.a.bodyC, sky.b.bodyC, t);
+  const glowC  = lerpColor(sky.a.glowC, sky.b.glowC, t);
+  const starsA = lerp(sky.a.starsA, sky.b.starsA, t);
+  const ambC   = lerpColor(sky.a.ambC,  sky.b.ambC,  t);
+  const ambA   = lerp(sky.a.ambA,  sky.b.ambA,  t);
+
+  // Sun↔Moon crossfade: switch body type at midpoint of the transitioning phase
+  const typeA  = sky.a.bodyType, typeB = sky.b.bodyType;
+  const isMoon = typeA === typeB ? typeA === 'moon'
+                                 : (typeA === 'sun' ? t > 0.5 : t < 0.5);
+  const bodyFade = typeA === typeB ? 1.0
+                 : (isMoon ? clamp((t - 0.5) * 2, 0, 1)
+                           : clamp(1 - t * 2, 0, 1));
+
+  // ── Dynamic sky gradient (replaces pre-rendered layer 0) ─────────────────
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_H * 0.75);
+  skyGrad.addColorStop(0, rgbStr(topC));
+  skyGrad.addColorStop(1, rgbStr(botC));
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // ── Scroll & draw parallax layers ─────────────────────────────────────────
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    const lw    = layer.canvas.width;
+
+    if (layer.speed > 0) {
+      layer.scrollX += scrollSpeed * layer.speed * _lastDrawDt;
+      if (layer.scrollX >= lw) layer.scrollX -= lw;
+    }
+
+    if (i === 0) continue; // sky: drawn dynamically above
+
+    if (i === 1) {
+      // Stars: fade in/out with time of day
+      if (starsA > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = starsA;
+        const dx = -layer.scrollX;
+        ctx.drawImage(layer.canvas, dx, 0);
+        if (dx + lw < CANVAS_W) ctx.drawImage(layer.canvas, dx + lw, 0);
+        ctx.restore();
+      }
+      continue;
+    }
+
+    if (i === 2) continue; // sun/moon: drawn dynamically below
+
+    const drawX = -layer.scrollX;
+    ctx.drawImage(layer.canvas, drawX, 0);
+    if (drawX + lw < CANVAS_W) ctx.drawImage(layer.canvas, drawX + lw, 0);
+  }
+
+  // ── Dynamic sun / moon ────────────────────────────────────────────────────
+  const sbx   = CANVAS_W * 0.78 - (layers[2] ? layers[2].scrollX * 0.001 : 0);
+  const sby   = CANVAS_H * bodyY;
+  const pulse = Math.sin(_sunPulseTime * 1.1) * 0.04 + 0.06;
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, bodyFade);
+
+  if (isMoon) {
+    // Soft glow ring
+    const mg = ctx.createRadialGradient(sbx, sby, bodyR * 0.3, sbx, sby, bodyR * 2.8);
+    mg.addColorStop(0, rgbaStr(glowC, 0.35));
+    mg.addColorStop(1, rgbaStr(glowC, 0));
+    ctx.fillStyle = mg;
+    ctx.beginPath(); ctx.arc(sbx, sby, bodyR * 2.8, 0, Math.PI * 2); ctx.fill();
+    // Moon disc with crescent shadow (clipping trick)
+    ctx.save();
+    ctx.beginPath(); ctx.arc(sbx, sby, bodyR, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = rgbStr(bodyC);
+    ctx.fillRect(sbx - bodyR, sby - bodyR, bodyR * 2, bodyR * 2);
+    ctx.fillStyle = rgbaStr(topC, 0.82); // shadow in sky-top colour → crescent
+    ctx.beginPath();
+    ctx.arc(sbx - bodyR * 0.34, sby - bodyR * 0.22, bodyR * 0.87, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  } else {
+    // Sun outer glow
+    const sg = ctx.createRadialGradient(sbx - bodyR * 0.25, sby - bodyR * 0.25,
+                                        bodyR * 0.05, sbx, sby, bodyR * 2.5);
+    sg.addColorStop(0,   rgbaStr(bodyC, 0.50));
+    sg.addColorStop(0.5, rgbaStr(glowC, 0.18));
+    sg.addColorStop(1,   rgbaStr(glowC, 0));
+    ctx.fillStyle = sg;
+    ctx.beginPath(); ctx.arc(sbx, sby, bodyR * 2.5, 0, Math.PI * 2); ctx.fill();
+    // Sun disc + inner highlight
+    ctx.beginPath(); ctx.arc(sbx, sby, bodyR, 0, Math.PI * 2);
+    ctx.fillStyle = rgbStr(bodyC); ctx.fill();
+    ctx.beginPath(); ctx.arc(sbx, sby, bodyR * 0.68, 0, Math.PI * 2);
+    ctx.fillStyle = rgbaStr([255,255,255], 0.32); ctx.fill();
+    // Pulse ring
+    ctx.globalAlpha = Math.max(0, bodyFade) * pulse;
+    const pg2 = ctx.createRadialGradient(sbx, sby, 8, sbx, sby, bodyR * 2.8);
+    pg2.addColorStop(0, rgbaStr(bodyC, 1)); pg2.addColorStop(1, rgbaStr(glowC, 0));
+    ctx.fillStyle = pg2; ctx.beginPath(); ctx.arc(sbx, sby, bodyR * 2.8, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+
+  // ── Ambient tint: night darkens dunes, midday warms them ─────────────────
+  if (ambA > 0.005) {
+    ctx.save();
+    ctx.globalAlpha = ambA;
+    ctx.fillStyle = rgbStr(ambC);
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.restore();
+  }
+}
+
+// ============================================================
+// === PART 3: OBSTACLES, UI & GAME STATE =====================
+// ============================================================
+
+// ─── Obstacle class ───────────────────────────────────────────────────────────
+
+class Obstacle {
+  constructor() {
+    this.active = false; this.x = 0; this.y = 0; this.w = 0; this.h = 0;
+    this.type = ''; this.speed = 0; this.rotationAngle = 0; this.radius = 1;
+    this.spikeCount = 3; this.spikeHeights = [];
+    this.hasLeftArm = false; this.hasRightArm = false; this.armHeightL = 0; this.armHeightR = 0;
+    this.bouncePhase = 0; this.bounceAmp = 0; this.dustHeight = 0; this.dustPhase = 0; this.pitWidth = 120;
+  }
+
+  init(type, x, speed, extra) {
+    extra = extra || {};
+    this.type = type; this.x = x; this.speed = speed; this.active = true; this.rotationAngle = 0;
+    this.bouncePhase = Math.random() * Math.PI * 2;
+    const groundY = CANVAS_H - GROUND_HEIGHT;
+
+    if (type === 'boulderSm') {
+      this.radius = 22; this.w = this.radius * 2; this.h = this.radius * 2; this.y = groundY - this.radius;
+    } else if (type === 'boulderMd') {
+      this.radius = 36; this.w = this.radius * 2; this.h = this.radius * 2; this.y = groundY - this.radius;
+    } else if (type === 'boulderLg') {
+      this.radius = 52; this.w = this.radius * 2; this.h = this.radius * 2; this.y = groundY - this.radius;
+    } else if (type === 'spikeTrap') {
+      this.spikeCount = Math.floor(rand(3, 8)); this.spikeHeights = [];
+      for (let i = 0; i < this.spikeCount; i++) this.spikeHeights.push(rand(28, 52));
+      this.w = this.spikeCount * 22; this.h = Math.max(...this.spikeHeights); this.y = groundY - this.h;
+    } else if (type === 'cactus') {
+      this.h = rand(70, 110); this.w = 28; this.y = groundY - this.h;
+      this.hasLeftArm = Math.random() > 0.4; this.hasRightArm = Math.random() > 0.4;
+      this.armHeightL = rand(0.3, 0.6); this.armHeightR = rand(0.3, 0.65);
+    } else if (type === 'tumbleweed') {
+      this.radius = rand(22, 38); this.w = this.radius * 2; this.h = this.radius * 2;
+      this.bounceAmp = rand(8, 18); this.y = groundY - this.radius * 2;
+    } else if (type === 'dustDevil') {
+      this.w = 60; this.dustHeight = rand(80, 150); this.h = this.dustHeight; this.dustPhase = 0;
+      this.y = rand(80, groundY - this.dustHeight - 20);
+    } else if (type === 'sandPit') {
+      this.pitWidth = extra.pitWidth || rand(120, 200); this.w = this.pitWidth; this.h = GROUND_HEIGHT; this.y = groundY;
+    }
+  }
+
+  update(dt) {
+    this.x -= this.speed * dt;
+    if (this.type === 'boulderSm' || this.type === 'boulderMd' || this.type === 'boulderLg') {
+      this.rotationAngle += (this.speed * dt) / this.radius;
+    } else if (this.type === 'tumbleweed') {
+      this.rotationAngle += (this.speed * dt) / (this.radius || 1);
+      this.bouncePhase += dt * 4.5;
+    } else if (this.type === 'dustDevil') {
+      this.dustPhase += dt * 2.8; this.rotationAngle += dt * 3.5;
+    }
+  }
+
+  draw(ctx) {
+    const groundY = CANVAS_H - GROUND_HEIGHT;
+    ctx.save();
+
+    if (this.type === 'boulderSm' || this.type === 'boulderMd' || this.type === 'boulderLg') {
+      const cx = this.x + this.radius, cy = this.y + this.radius;
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(this.rotationAngle);
+      // Cool grey-purple rock — stands out against warm brown dunes
+      const grad = ctx.createRadialGradient(-this.radius * 0.32, -this.radius * 0.32, this.radius * 0.05, 0, 0, this.radius);
+      grad.addColorStop(0, '#d8cfc8'); grad.addColorStop(0.45, '#8a7e78'); grad.addColorStop(1, '#2e2420');
+      ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
+      // Dark outline for clear silhouette
+      ctx.strokeStyle = '#1a1008'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.stroke();
+      // Rock crack lines
+      ctx.strokeStyle = 'rgba(20,10,5,0.55)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-this.radius * 0.4, -this.radius * 0.2); ctx.lineTo(this.radius * 0.1, this.radius * 0.4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(this.radius * 0.3, -this.radius * 0.5); ctx.lineTo(-this.radius * 0.1, this.radius * 0.1); ctx.stroke();
+      // Bright specular highlight
+      ctx.beginPath(); ctx.arc(-this.radius * 0.28, -this.radius * 0.3, this.radius * 0.18, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
+      ctx.restore();
+
+    } else if (this.type === 'spikeTrap') {
+      for (let i = 0; i < this.spikeCount; i++) {
+        const sx = this.x + i * 22, sh = this.spikeHeights[i];
+        // Bright yellow-white tip fading to dark red base — very visible against brown ground
+        const grad = ctx.createLinearGradient(sx + 11, groundY - sh, sx + 11, groundY);
+        grad.addColorStop(0, '#fff0a0'); grad.addColorStop(0.25, '#ff9000'); grad.addColorStop(0.7, '#cc1800'); grad.addColorStop(1, '#4a0800');
+        ctx.beginPath(); ctx.moveTo(sx + 1, groundY); ctx.lineTo(sx + 11, groundY - sh); ctx.lineTo(sx + 21, groundY); ctx.closePath();
+        ctx.fillStyle = grad; ctx.fill();
+        ctx.strokeStyle = '#100000'; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+
+    } else if (this.type === 'cactus') {
+      const baseX = this.x + this.w / 2, topY = this.y, baseY = groundY;
+      ctx.lineCap = 'round';
+      // Black outline pass first for clear silhouette
+      ctx.strokeStyle = '#0a1a08'; ctx.lineWidth = 20;
+      ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(baseX, topY); ctx.stroke();
+      if (this.hasLeftArm) {
+        const armY = topY + (baseY - topY) * this.armHeightL;
+        ctx.lineWidth = 14;
+        ctx.beginPath(); ctx.moveTo(baseX, armY); ctx.lineTo(baseX - 28, armY); ctx.lineTo(baseX - 28, armY - 22); ctx.stroke();
+      }
+      if (this.hasRightArm) {
+        const armY = topY + (baseY - topY) * this.armHeightR;
+        ctx.lineWidth = 14;
+        ctx.beginPath(); ctx.moveTo(baseX, armY); ctx.lineTo(baseX + 28, armY); ctx.lineTo(baseX + 28, armY - 22); ctx.stroke();
+      }
+      // Green fill pass — real cactus green, high contrast against the brown desert
+      ctx.strokeStyle = '#2e8c40'; ctx.lineWidth = 16;
+      ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(baseX, topY); ctx.stroke();
+      if (this.hasLeftArm) {
+        const armY = topY + (baseY - topY) * this.armHeightL;
+        ctx.lineWidth = 10;
+        ctx.beginPath(); ctx.moveTo(baseX, armY); ctx.lineTo(baseX - 28, armY); ctx.lineTo(baseX - 28, armY - 22); ctx.stroke();
+      }
+      if (this.hasRightArm) {
+        const armY = topY + (baseY - topY) * this.armHeightR;
+        ctx.lineWidth = 10;
+        ctx.beginPath(); ctx.moveTo(baseX, armY); ctx.lineTo(baseX + 28, armY); ctx.lineTo(baseX + 28, armY - 22); ctx.stroke();
+      }
+      // Light green highlight stripe
+      ctx.strokeStyle = '#5abf60'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(baseX - 3, baseY - 10); ctx.lineTo(baseX - 3, topY + 8); ctx.stroke();
+
+    } else if (this.type === 'tumbleweed') {
+      const bounceOff = Math.abs(Math.sin(this.bouncePhase)) * this.bounceAmp;
+      const cx = this.x + this.radius, cy = this.y + this.radius - bounceOff;
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(this.rotationAngle);
+      // Bright golden-tan strands — much more visible than dark brown
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const ax = Math.cos(angle) * this.radius * 0.95, ay = Math.sin(angle) * this.radius * 0.95;
+        const bx = Math.cos(angle + Math.PI * 0.55) * this.radius * 0.55, by = Math.sin(angle + Math.PI * 0.55) * this.radius * 0.55;
+        const alpha = 0.75 + 0.25 * Math.abs(Math.cos(angle));
+        ctx.strokeStyle = `rgba(210,155,50,${alpha})`; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.bezierCurveTo(bx * 0.6, by * 0.6, bx, by, ax, ay); ctx.stroke();
+      }
+      // Visible outer ring with dark outline
+      ctx.strokeStyle = 'rgba(20,10,0,0.7)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, this.radius * 0.92, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(230,185,70,0.65)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, this.radius * 0.92, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+
+    } else if (this.type === 'dustDevil') {
+      ctx.save(); ctx.translate(this.x + this.w / 2, this.y + this.dustHeight / 2); ctx.rotate(this.rotationAngle * 0.3);
+      // Outer dark halo for silhouette against the sky
+      for (let s = 0; s < 6; s++) {
+        const t = s / 6, halfW = lerp(this.w * 0.5, 4, t), segY = lerp(-this.dustHeight / 2, this.dustHeight / 2, t);
+        const alpha = lerp(0.5, 0.1, t) * (0.8 + 0.2 * Math.sin(this.dustPhase + s * 1.1));
+        ctx.strokeStyle = `rgba(10,5,0,${alpha})`; ctx.lineWidth = lerp(16, 4, t);
+        ctx.beginPath(); ctx.arc(Math.sin(this.dustPhase * 0.7 + s) * halfW * 0.3, segY, halfW, 0, Math.PI * 2); ctx.stroke();
+      }
+      // Bright blue-white swirl — pops against the warm orange/brown sky
+      for (let s = 0; s < 6; s++) {
+        const t = s / 6, halfW = lerp(this.w * 0.5, 4, t), segY = lerp(-this.dustHeight / 2, this.dustHeight / 2, t);
+        const alpha = lerp(0.85, 0.18, t) * (0.7 + 0.3 * Math.sin(this.dustPhase + s * 1.1));
+        ctx.strokeStyle = `rgba(200,230,255,${alpha})`; ctx.lineWidth = lerp(10, 2, t);
+        ctx.beginPath(); ctx.arc(Math.sin(this.dustPhase * 0.7 + s) * halfW * 0.3, segY, halfW, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+
+    } else if (this.type === 'sandPit') {
+      // Dark void fill
+      ctx.fillStyle = '#0a0400'; ctx.fillRect(this.x, groundY, this.w, GROUND_HEIGHT);
+      const pitGrad = ctx.createLinearGradient(this.x, groundY, this.x, groundY + GROUND_HEIGHT);
+      pitGrad.addColorStop(0, 'rgba(0,0,0,0.85)'); pitGrad.addColorStop(1, 'rgba(0,0,0,0.3)');
+      ctx.fillStyle = pitGrad; ctx.fillRect(this.x, groundY, this.w, GROUND_HEIGHT);
+      // Bright yellow-orange warning edges — clearly mark the danger zone
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillRect(this.x - 5, groundY - 6, 10, GROUND_HEIGHT + 6);
+      ctx.fillRect(this.x + this.w - 5, groundY - 6, 10, GROUND_HEIGHT + 6);
+      // Dark outline on the warning posts
+      ctx.strokeStyle = '#1a0800'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(this.x - 5, groundY - 6, 10, GROUND_HEIGHT + 6);
+      ctx.strokeRect(this.x + this.w - 5, groundY - 6, 10, GROUND_HEIGHT + 6);
+      // Subtle warning stripe at the top edge of the pit
+      ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(this.x, groundY); ctx.lineTo(this.x + this.w, groundY); ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  getCollider() {
+    const groundY = CANVAS_H - GROUND_HEIGHT;
+    if (this.type === 'boulderSm' || this.type === 'boulderMd' || this.type === 'boulderLg') {
+      const s = this.radius * 0.18;
+      return { x: this.x + s, y: this.y + s, w: this.w - s * 2, h: this.h - s * 2 };
+    } else if (this.type === 'spikeTrap') {
+      return { x: this.x + 4, y: this.y + 10, w: this.w - 8, h: this.h - 10 };
+    } else if (this.type === 'cactus') {
+      return { x: this.x + 4, y: this.y + 6, w: this.w - 8, h: this.h - 6 };
+    } else if (this.type === 'tumbleweed') {
+      const bounceOff = Math.abs(Math.sin(this.bouncePhase)) * this.bounceAmp, s = this.radius * 0.18;
+      return { x: this.x + s, y: this.y - bounceOff + s, w: this.w - s * 2, h: this.h - s * 2 };
+    } else if (this.type === 'dustDevil') {
+      return { x: this.x + 8, y: this.y + 10, w: this.w - 16, h: this.h - 20 };
+    } else if (this.type === 'sandPit') {
+      return { x: this.x, y: groundY, w: this.w, h: GROUND_HEIGHT };
+    }
+    return { x: this.x, y: this.y, w: this.w, h: this.h };
+  }
+}
+
+// ─── Obstacle pool & spawning ─────────────────────────────────────────────────
+
+const obstaclePool = new Pool(() => new Obstacle());
+let activeObstacles = [];
+let nextObstacleX   = CANVAS_W + 280;
+let lastObstacleX   = CANVAS_W + 280;
+
+function _pickObstacleType() {
+  const score = state.score;
+  let types;
+  if (score < 800)       types = ['boulderSm','boulderSm','boulderMd','boulderLg','cactus','cactus','spikeTrap','tumbleweed'];
+  else if (score < 1000) types = ['boulderSm','boulderMd','boulderLg','cactus','spikeTrap','tumbleweed','tumbleweed','sandPit'];
+  else if (score < 1200) types = ['boulderSm','boulderMd','boulderLg','cactus','spikeTrap','tumbleweed','sandPit','sandPit'];
+  else                   types = ['boulderSm','boulderMd','boulderLg','cactus','spikeTrap','tumbleweed','sandPit','dustDevil','dustDevil'];
+  return types[Math.floor(Math.random() * types.length)];
+}
+
+function spawnObstacle() {
+  const score   = state.score;
+  const minGap  = Math.max(300, 600 - score * 0.05);
+  const spawnX  = nextObstacleX;
+  const cluster = score >= 1000 && Math.random() < 0.30;
+
+  if (cluster) {
+    const clusterTypes = ['boulderSm','boulderMd','boulderLg','tumbleweed'];
+    const count = Math.floor(rand(2, 4));
+    let offsetX = 0;
+    for (let i = 0; i < count; i++) {
+      const t = clusterTypes[Math.floor(Math.random() * clusterTypes.length)];
+      const obs = obstaclePool.acquire(); obs.init(t, spawnX + offsetX, state.speed); activeObstacles.push(obs);
+      offsetX += rand(60, 100);
+    }
+    lastObstacleX = spawnX + offsetX;
+  } else {
+    const type = _pickObstacleType();
+    const extra = type === 'sandPit' ? { pitWidth: rand(120, 200) } : {};
+    const obs = obstaclePool.acquire(); obs.init(type, spawnX, state.speed, extra); activeObstacles.push(obs);
+    lastObstacleX = spawnX + obs.w;
+  }
+  nextObstacleX = lastObstacleX + minGap + rand(0, 180);
+}
+
+function updateObstacles(dt) {
+  for (let i = activeObstacles.length - 1; i >= 0; i--) {
+    const obs = activeObstacles[i];
+    obs.speed = state.speed;
+    obs.update(dt);
+    if (obs.x + obs.w < -20) { obstaclePool.release(obs); activeObstacles.splice(i, 1); }
+  }
+  nextObstacleX -= state.speed * dt;
+  if (nextObstacleX <= CANVAS_W + 50) spawnObstacle();
+}
+
+function drawObstacles(ctx) {
+  for (let i = 0; i < activeObstacles.length; i++) activeObstacles[i].draw(ctx);
+}
+
+// ─── Cloud Platforms ──────────────────────────────────────────────────────────
+// When gravity-flipped the player must land on a scrolling cloud.
+// If no cloud is reachable they fly off the top of the screen and die.
+
+class CloudPlatform {
+  constructor() { this.x = 0; this.y = 0; this.w = 0; this.h = 22; this.active = false; }
+
+  init(x, y, w) { this.x = x; this.y = y; this.w = w; this.h = 22; this.active = true; }
+
+  update(dt) { this.x -= state.speed * dt; }
+
+  draw(ctx) {
+    ctx.save();
+    const baseY  = this.y + this.h;
+    const bumps  = Math.max(3, Math.floor(this.w / 32));
+    const bumpR  = 16;
+    ctx.shadowColor = 'rgba(150,200,255,0.6)'; ctx.shadowBlur = 12;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    for (let i = 0; i < bumps; i++) {
+      const bx = this.x + bumpR + (i / (bumps - 1)) * (this.w - bumpR * 2);
+      const by = baseY - bumpR * (0.65 + (i % 3 === 1 ? 0.30 : 0));
+      ctx.arc(bx, by, bumpR, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(210,230,255,0.80)';
+    ctx.fillRect(this.x + 6, baseY - 5, this.w - 12, 9);
+    ctx.restore();
+  }
+}
+
+const cloudPool       = new Pool(() => new CloudPlatform());
+let activeClouds      = [];
+let nextCloudX        = CANVAS_W + 350;
+let sandstormCloudMode = false; // true during warning/danger/receding — only safe-height clouds
+
+function spawnCloud() {
+  const cloud = cloudPool.acquire();
+  // During a sandstorm keep clouds in the safe survival zone (cloud.y < ~100).
+  // Also use smaller gaps so the player never gets stranded between clouds.
+  const y = sandstormCloudMode ? rand(60, 88) : rand(GROUND_HEIGHT - 10, 180);
+  const w = rand(110, 220);
+  cloud.init(nextCloudX, y, w);
+  activeClouds.push(cloud);
+  const gap = sandstormCloudMode ? rand(60, 130) : rand(190, 360);
+  nextCloudX = nextCloudX + w + gap;
+}
+
+// Spawns one wide storm-cloud bank that guarantees survival.
+// Width = speed × 6.5 so the cloud remains under the player for the full
+// WARNING_DUR + DANGER_DUR window even at maximum game speed.
+function spawnSandstormCloud() {
+  const cloud = cloudPool.acquire();
+  const safeY = rand(62, 86);                    // reliably within safe zone
+  const width = Math.ceil(state.speed * 6.5);    // wide enough to last the event
+  cloud.init(CANVAS_W, safeY, width);            // start just off the right edge
+  activeClouds.push(cloud);
+  // Push nextCloudX past this mega-cloud so normal spawning queues behind it
+  nextCloudX = Math.max(nextCloudX, CANVAS_W + width + rand(200, 320));
+}
+
+function updateClouds(dt) {
+  nextCloudX -= state.speed * dt;
+  if (nextCloudX <= CANVAS_W + 100) spawnCloud();
+  for (let i = activeClouds.length - 1; i >= 0; i--) {
+    const c = activeClouds[i];
+    c.update(dt);
+    if (c.x + c.w < -20) { cloudPool.release(c); activeClouds.splice(i, 1); }
+  }
+}
+
+function drawClouds(ctx) {
+  for (let i = 0; i < activeClouds.length; i++) activeClouds[i].draw(ctx);
+}
+
+// Called every frame after player.update().
+// Handles: landing on a cloud, falling off when a cloud scrolls away, off-screen death.
+function checkCloudLanding() {
+  if (player.dead || player.gravDir !== -1) return;
+
+  const pLeft  = player.x - COLLIDER_W / 2;
+  const pRight = player.x + COLLIDER_W / 2;
+  let onCloud  = false;
+
+  for (let i = 0; i < activeClouds.length; i++) {
+    const cloud       = activeClouds[i];
+    const cloudBottom = cloud.y + cloud.h;
+    if (pRight <= cloud.x || pLeft >= cloud.x + cloud.w) continue;
+    // Player moving upward (vy ≤ 0) and reaching the cloud's bottom edge
+    if (player.vy <= 0 && player.y <= cloudBottom + 6) {
+      if (!player.grounded) { player.squashTimer = 6; audio.land(); }
+      player.y       = cloudBottom;
+      player.vy      = 0;
+      player.grounded = true;
+      player.jumpCount = 0;
+      onCloud = true;
+      break;
+    }
+  }
+
+  // Un-ground the player once the cloud scrolls out from under them
+  if (!onCloud && player.grounded) player.grounded = false;
+
+  // Die if the player flies off the top of the screen
+  if (!player.dead && player.y < -COLLIDER_H) { player.die(); transitionToDead(); }
+}
+
+// ─── Collision ────────────────────────────────────────────────────────────────
+
+function aabbOverlap(a, b) {
+  return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+}
+
+function checkCollisions() {
+  if (player.dead) return;
+  const pBox = player.getAABB();
+  for (let i = 0; i < activeObstacles.length; i++) {
+    if (aabbOverlap(pBox, activeObstacles[i].getCollider())) {
+      player.die(); transitionToDead(); return;
+    }
+  }
+}
+
+// ─── Ceiling Event logic ──────────────────────────────────────────────────────
+
+// Y threshold: player.y must be BELOW this value to be in the safe zone.
+// At the ceiling, player.y === GROUND_HEIGHT (60). We give 60 px of grace.
+const CEILING_SAFE_Y = GROUND_HEIGHT + 60;
+
+// The wave rises until its top edge reaches this Y, leaving just enough room
+// for the player pressed against the ceiling.
+const WAVE_TARGET_Y  = GROUND_HEIGHT + 15;
+
+function updateCeilingEvent(dt) {
+  if (state.gameState !== 'RUNNING' || player.dead) return;
+
+  if (ceilingEvt.phase === 'idle') {
+    ceilingEvt.nextIn -= dt;
+    if (ceilingEvt.nextIn <= 0) {
+      ceilingEvt.phase = 'warning';
+      ceilingEvt.timer = 0;
+      sandstormCloudMode = true;   // switch cloud spawner to safe-zone only
+      spawnSandstormCloud();       // guarantee one wide safe cloud appears immediately
+    }
+    return;
+  }
+
+  ceilingEvt.timer += dt;
+
+  if (ceilingEvt.phase === 'warning') {
+    if (ceilingEvt.timer >= ceilingEvt.WARNING_DUR) {
+      ceilingEvt.phase = 'danger';
+      ceilingEvt.timer = 0;
+      ceilingEvt.riseY = CANVAS_H;
+    }
+    return;
+  }
+
+  if (ceilingEvt.phase === 'danger') {
+    const prog = Math.min(ceilingEvt.timer / ceilingEvt.DANGER_DUR, 1.0);
+    ceilingEvt.riseY = CANVAS_H - (CANVAS_H - WAVE_TARGET_Y) * prog;
+
+    // Kill player if the wave reaches them.
+    // In flipped mode player.y is the cloud-bottom reference; use the top of the
+    // bounding box (player.y - COLLIDER_H) so high clouds still protect the player.
+    const checkY = player.gravDir === -1 ? player.y - COLLIDER_H : player.y;
+    if (checkY >= ceilingEvt.riseY) {
+      player.die();
+      transitionToDead();
+      ceilingEvt.phase = 'idle';
+      ceilingEvt.nextIn = ceilingEvt.COOLDOWN;
+      return;
+    }
+
+    if (ceilingEvt.timer >= ceilingEvt.DANGER_DUR) {
+      ceilingEvt.phase = 'receding';
+      ceilingEvt.timer = 0;
+    }
+    return;
+  }
+
+  if (ceilingEvt.phase === 'receding') {
+    const prog = Math.min(ceilingEvt.timer / ceilingEvt.RECEDE_DUR, 1.0);
+    ceilingEvt.riseY = WAVE_TARGET_Y + (CANVAS_H - WAVE_TARGET_Y) * prog;
+    if (ceilingEvt.timer >= ceilingEvt.RECEDE_DUR) {
+      ceilingEvt.riseY = CANVAS_H;
+      ceilingEvt.phase = 'idle';
+      ceilingEvt.nextIn = ceilingEvt.COOLDOWN;
+      sandstormCloudMode = false;  // resume normal random cloud heights
+    }
+  }
+}
+
+function drawCeilingEvent(ctx) {
+  if (ceilingEvt.phase === 'idle') return;
+
+  const pulse = (Math.sin(state.gameTime * 10) + 1) / 2;
+
+  if (ceilingEvt.phase === 'warning') {
+    const timeLeft = ceilingEvt.WARNING_DUR - ceilingEvt.timer;
+    const urgency  = 1 - timeLeft / ceilingEvt.WARNING_DUR;
+
+    // Pulsing red bar at the bottom
+    ctx.save();
+    ctx.globalAlpha = 0.35 + pulse * 0.35;
+    ctx.fillStyle = '#ff3300';
+    ctx.fillRect(0, CANVAS_H - 18, CANVAS_W, 18);
+    ctx.restore();
+
+    // Warning text
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const fontSize = Math.round(28 + urgency * 10 + pulse * 4);
+    ctx.font = `bold ${fontSize}px monospace`;
+    ctx.shadowColor = '#ff2200'; ctx.shadowBlur = 18 + pulse * 12;
+    ctx.fillStyle = `rgba(255,${Math.round(180 + pulse * 75)},0,${0.85 + pulse * 0.15})`;
+    ctx.fillText('SANDSTORM RISING!', CANVAS_W / 2, CANVAS_H * 0.72);
+    ctx.font = 'bold 20px monospace';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#ffe0a0';
+    ctx.fillText(`GET ON A HIGH CLOUD — ${Math.ceil(timeLeft)}s`, CANVAS_W / 2, CANVAS_H * 0.72 + 36);
+    ctx.restore();
+    return;
+  }
+
+  if (ceilingEvt.phase === 'danger' || ceilingEvt.phase === 'receding') {
+    const waveTop = ceilingEvt.riseY;
+
+    // Rising sand/fire gradient
+    ctx.save();
+    const grad = ctx.createLinearGradient(0, waveTop - 50, 0, CANVAS_H);
+    grad.addColorStop(0,    'rgba(255,100,0,0)');
+    grad.addColorStop(0.12, 'rgba(255,80,0,0.7)');
+    grad.addColorStop(0.45, `rgba(220,40,0,0.92)`);
+    grad.addColorStop(1,    'rgba(160,10,0,1)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, waveTop - 50, CANVAS_W, CANVAS_H - waveTop + 50);
+
+    // Wavy top edge
+    ctx.beginPath();
+    ctx.moveTo(0, waveTop);
+    for (let wx = 0; wx <= CANVAS_W; wx += 6) {
+      const wy = waveTop
+        + Math.sin(wx * 0.038 + state.gameTime * 6)  * 9
+        + Math.sin(wx * 0.019 + state.gameTime * 4.2) * 5;
+      ctx.lineTo(wx, wy);
+    }
+    ctx.lineTo(CANVAS_W, CANVAS_H);
+    ctx.lineTo(0, CANVAS_H);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(255,${Math.round(50 + pulse * 50)},0,0.88)`;
+    ctx.fill();
+    ctx.restore();
+
+    // "GET UP!" text — only during the active danger phase
+    if (ceilingEvt.phase === 'danger') {
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `bold ${Math.round(34 + pulse * 8)}px monospace`;
+      ctx.shadowColor = '#ff2200'; ctx.shadowBlur = 22 + pulse * 10;
+      ctx.fillStyle = `rgba(255,220,0,${0.82 + pulse * 0.18})`;
+      ctx.fillText('GET TO THE CLOUDS!', CANVAS_W / 2, CANVAS_H * 0.30);
+      ctx.restore();
+    }
+  }
+}
+
+// ─── Game state transitions ───────────────────────────────────────────────────
+
+let deathOverlayTimer = 0;
+let deathOverlayAlpha = 0;
+
+function startGame() {
+  state.score = 0; state.speed = SPEED_TIERS[0].speed; state.gameTime = 0; state.frame = 0; state.paused = false;
+  ceilingEvt.phase = 'idle'; ceilingEvt.timer = 0; ceilingEvt.nextIn = 20; ceilingEvt.riseY = CANVAS_H;
+  obstaclePool.releaseAll();
+  activeObstacles = [];
+  nextObstacleX = CANVAS_W + 280;
+  lastObstacleX = CANVAS_W + 280;
+  cloudPool.releaseAll();
+  activeClouds = [];
+  nextCloudX = CANVAS_W + 350;
+  sandstormCloudMode = false;
+  buildLayers();
+  buildAtlas();
+  state.gameState = 'RUNNING';
+  audio.startMusic();
+}
+
+function restartGame() {
+  deathOverlayTimer = 0; deathOverlayAlpha = 0;
+  player.reset();
+  startGame();
+}
+
+function transitionToDead() {
+  state.gameState = 'DEAD'; deathOverlayTimer = 0; deathOverlayAlpha = 0;
+  if (state.score > state.bestScore) state.bestScore = state.score;
+  audio.stopMusic();
+}
+
+// ─── HUD ──────────────────────────────────────────────────────────────────────
+
+function drawHUD(ctx) {
+  ctx.save();
+  ctx.font = 'bold 32px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.fillStyle = COLORS.ui;
+  ctx.fillText(Math.floor(state.score).toString().padStart(5, '0'), CANVAS_W / 2, 14);
+  ctx.font = 'bold 18px monospace'; ctx.textAlign = 'right'; ctx.shadowBlur = 5; ctx.fillStyle = '#d4b870';
+  ctx.fillText('BEST: ' + Math.floor(state.bestScore).toString().padStart(5, '0'), CANVAS_W - 16, 18);
+
+  ctx.shadowBlur = 0;
+  const currentTier = SPEED_TIERS.reduce((acc, t, i) => state.score >= t.score ? i : acc, 0);
+  const pipW = 22, pipH = 12, pipGap = 6, barX = 16, barY = CANVAS_H - 36;
+  ctx.font = 'bold 11px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffe0a0'; ctx.fillText('SPD', barX, barY - 10);
+  for (let i = 0; i < SPEED_TIERS.length; i++) {
+    const px = barX + i * (pipW + pipGap);
+    if (i <= currentTier) { ctx.fillStyle = '#ffb020'; ctx.shadowBlur = 6; ctx.shadowColor = '#ff8800'; }
+    else { ctx.fillStyle = '#3a2200'; ctx.shadowBlur = 0; }
+    ctx.fillRect(px, barY, pipW, pipH); ctx.shadowBlur = 0;
+  }
+  ctx.fillStyle = '#d4b870'; ctx.font = 'bold 11px monospace';
+  ctx.fillText('T' + (currentTier + 1), barX + SPEED_TIERS.length * (pipW + pipGap) + 4, barY + pipH / 2);
+  ctx.restore();
+}
+
+// ─── Start screen ─────────────────────────────────────────────────────────────
+
+function drawStartScreen(ctx) {
+  drawWorld(ctx);
+
+  // Animated stick figure
+  const figX = CANVAS_W * 0.72, figY = CANVAS_H - GROUND_HEIGHT - 2, t = state.gameTime;
+  ctx.save(); ctx.strokeStyle = '#ffe0a0'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(figX, figY - 48, 9, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(figX, figY - 39); ctx.lineTo(figX, figY - 18); ctx.stroke();
+  const legSwing = Math.sin(t * 8) * 18;
+  ctx.beginPath(); ctx.moveTo(figX, figY - 18); ctx.lineTo(figX + Math.sin(t * 8) * 14, figY - 9 + Math.abs(Math.sin(t * 8)) * 6); ctx.lineTo(figX + legSwing, figY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(figX, figY - 18); ctx.lineTo(figX - Math.sin(t * 8) * 14, figY - 9 + Math.abs(Math.cos(t * 8)) * 6); ctx.lineTo(figX - legSwing, figY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(figX, figY - 34); ctx.lineTo(figX + Math.cos(t * 8) * 16, figY - 26 + Math.sin(t * 8) * 8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(figX, figY - 34); ctx.lineTo(figX - Math.cos(t * 8) * 16, figY - 26 - Math.sin(t * 8) * 8); ctx.stroke();
+  ctx.restore();
+
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = 'bold 72px monospace'; ctx.shadowColor = '#ff6a00'; ctx.shadowBlur = 20; ctx.fillStyle = '#ffe0a0';
+  ctx.fillText('DESERT DASH', CANVAS_W / 2, CANVAS_H * 0.30);
+  ctx.font = 'bold 24px monospace'; ctx.shadowBlur = 10; ctx.fillStyle = '#ffcc70';
+  ctx.fillText('Survive the Desert', CANVAS_W / 2, CANVAS_H * 0.30 + 60);
+
+  if (Math.floor(state.gameTime / 0.5) % 2 === 0) {
+    ctx.font = 'bold 22px monospace'; ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.fillStyle = '#ffffff';
+    ctx.fillText('PRESS SPACE OR TAP TO START', CANVAS_W / 2, CANVAS_H * 0.62);
+  }
+  ctx.font = 'bold 16px monospace'; ctx.shadowBlur = 4; ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.fillStyle = '#d4b870';
+  ctx.fillText('\u2191/Space: Jump     \u2193: Gravity Flip', CANVAS_W / 2, CANVAS_H * 0.74);
+  ctx.restore();
+}
+
+// ─── Game over screen ─────────────────────────────────────────────────────────
+
+function drawDeadScreen(ctx) {
+  ctx.save(); ctx.globalAlpha = deathOverlayAlpha * 0.65; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H); ctx.restore();
+  drawParticles(ctx);
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = Math.min(1, deathOverlayAlpha * 1.5);
+  ctx.font = 'bold 60px monospace'; ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 24; ctx.fillStyle = '#ff4400';
+  ctx.fillText('YOU DIED', CANVAS_W / 2, CANVAS_H * 0.36);
+  ctx.font = 'bold 30px monospace'; ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.fillStyle = '#ffe0a0';
+  ctx.fillText('SCORE: ' + Math.floor(state.score).toString().padStart(5, '0'), CANVAS_W / 2, CANVAS_H * 0.50);
+  ctx.font = 'bold 22px monospace'; ctx.fillStyle = '#d4b870';
+  ctx.fillText('BEST:  ' + Math.floor(state.bestScore).toString().padStart(5, '0'), CANVAS_W / 2, CANVAS_H * 0.58);
+  if (deathOverlayTimer > 0.6 && Math.floor(state.gameTime / 0.5) % 2 === 0) {
+    ctx.font = 'bold 22px monospace'; ctx.fillStyle = '#ffffff'; ctx.shadowBlur = 8;
+    ctx.fillText('TAP TO RESTART', CANVAS_W / 2, CANVAS_H * 0.70);
+  }
+  ctx.globalAlpha = 1; ctx.restore();
+}
+
+// ─── Main render ──────────────────────────────────────────────────────────────
+
+function renderFrame() {
+  if (!ctx) return;
+  if (state.gameState === 'START') {
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    drawStartScreen(ctx);
+    return;
+  }
+  if (state.gameState === 'RUNNING') {
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    drawWorld(ctx);
+    drawClouds(ctx);
+    drawObstacles(ctx);
+    player.draw(ctx);
+    drawParticles(ctx);
+    drawCeilingEvent(ctx);
+    drawHUD(ctx);
+    return;
+  }
+  if (state.gameState === 'DEAD') {
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    drawWorld(ctx);
+    drawClouds(ctx);
+    drawObstacles(ctx);
+    player.draw(ctx);
+    drawDeadScreen(ctx);
+    ctx.save(); ctx.globalAlpha = 0.4; drawHUD(ctx); ctx.restore();
+    return;
+  }
+}
+
+// ─── State machine tick (overrides Part 1 stub) ───────────────────────────────
+
+function updateGame(dt) {
+  // Track real dt for drawWorld scrolling
+  _lastDrawDt = dt;
+
+  pollInput();
+  state.frame++;
+  state.gameTime += dt;
+
+  if (state.gameState === 'START') {
+    if (input.anyPressed || input.jumpPressed) startGame();
+    return;
+  }
+
+  if (state.gameState === 'DEAD') {
+    deathOverlayTimer += dt;
+    deathOverlayAlpha  = Math.min(1, deathOverlayTimer / 0.5);
+    player.update(dt);
+    updateParticles(dt);
+    // One-time death burst
+    if (deathOverlayTimer > 0.06 && deathOverlayTimer < 0.12) {
+      spawnParticles(player.x, player.y - 25, 30, '#ff6a00');
+      spawnParticles(player.x, player.y - 25, 20, '#ffe0a0');
+    }
+    if (deathOverlayTimer > 0.6 && (input.anyPressed || input.jumpPressed)) restartGame();
+    return;
+  }
+
+  // RUNNING
+  state.score += state.speed * dt * 0.01;
+  if (state.score > state.bestScore) state.bestScore = state.score;
+  state.speed = lerp(state.speed, getTargetSpeed(state.score), 1 - Math.pow(0.01, dt));
+  const tempo = Math.round(lerp(90, 160, clamp((state.speed - 350) / 550, 0, 1)));
+  audio.setTempo(tempo);
+  if (input.jumpPressed)  player.jump();
+  if (input.downPressed)  player.gravityFlip();
+  updateClouds(dt);
+  player.update(dt);
+  checkCloudLanding();
+  updateObstacles(dt);
+  updateParticles(dt);
+  checkCollisions();
+  updateCeilingEvent(dt);
+}
+
+function renderGame() { renderFrame(); }
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', function () {
+  initGame();
+  buildAtlas();
+  buildLayers();
+});
+</script>
+</body>
+</html>
