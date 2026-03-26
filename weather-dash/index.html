@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Animated background layer (behind content) -->
+  <div id="bg-animation" class="bg-animation"></div>
+  <!-- Weather particle overlay (above content, pointer-events: none) -->
+  <div id="weather-overlay" class="weather-overlay"></div>
+
+  <div class="app-container">
+
+    <!-- HEADER -->
+    <header class="header">
+      <div class="logo">&#9729; Weather</div>
+      <div class="search-wrapper">
+        <input id="search-input" type="text" placeholder="Search city..." autocomplete="off" />
+        <ul id="search-results" class="search-results hidden"></ul>
+      </div>
+      <div class="header-controls">
+        <button id="locate-btn" title="Use my location">&#8982;</button>
+        <button id="unit-toggle">°F</button>
+      </div>
+    </header>
+
+    <!-- SAVED LOCATIONS BAR -->
+    <div id="saved-bar" class="saved-bar"></div>
+
+    <!-- MAIN CONTENT (hidden until a location is loaded) -->
+    <main id="main-content" class="main-content hidden">
+
+      <!-- HERO: Current Weather -->
+      <section class="hero-section">
+        <div class="hero-left">
+          <div id="location-name" class="location-name"></div>
+          <div id="weather-desc" class="weather-desc"></div>
+          <div class="hero-temp-row">
+            <img id="weather-icon" src="" alt="" class="hero-icon" />
+            <span id="current-temp" class="current-temp"></span>
+          </div>
+          <div id="feels-like" class="feels-like"></div>
+          <div id="high-low" class="high-low"></div>
+        </div>
+        <div class="hero-right">
+          <button id="save-location-btn" class="save-btn">&#9733; Save</button>
+          <div id="last-updated" class="last-updated"></div>
+        </div>
+      </section>
+
+      <!-- DETAIL CARDS ROW -->
+      <section class="cards-grid">
+        <div class="card" id="card-humidity">
+          <div class="card-icon">&#128167;</div>
+          <div class="card-label">Humidity</div>
+          <div class="card-value" id="val-humidity"></div>
+        </div>
+        <div class="card" id="card-wind">
+          <div class="card-icon">&#127788;</div>
+          <div class="card-label">Wind</div>
+          <div class="card-value" id="val-wind"></div>
+          <div class="card-sub" id="val-gust"></div>
+        </div>
+        <div class="card" id="card-pressure">
+          <div class="card-icon">&#9654;</div>
+          <div class="card-label">Pressure</div>
+          <div class="card-value" id="val-pressure"></div>
+          <div class="card-sub" id="val-pressure-trend"></div>
+        </div>
+        <div class="card" id="card-visibility">
+          <div class="card-icon">&#128065;</div>
+          <div class="card-label">Visibility</div>
+          <div class="card-value" id="val-visibility"></div>
+        </div>
+        <div class="card" id="card-clouds">
+          <div class="card-icon">&#9729;</div>
+          <div class="card-label">Cloud Cover</div>
+          <div class="card-value" id="val-clouds"></div>
+        </div>
+      </section>
+
+      <!-- SUGGESTION + COMPASS + SUN ROW -->
+      <section class="mid-row">
+        <!-- Outfit/Activity Suggestion -->
+        <div class="panel suggestion-panel">
+          <h3>&#128214; Recommendation</h3>
+          <div id="suggestion-icon" class="suggestion-icon"></div>
+          <div id="suggestion-text" class="suggestion-text"></div>
+          <div id="best-hour" class="best-hour"></div>
+        </div>
+
+        <!-- Wind Compass -->
+        <div class="panel compass-panel">
+          <h3>&#127759; Wind Direction</h3>
+          <svg id="compass-svg" viewBox="0 0 200 200" class="compass-svg"></svg>
+          <div id="compass-label" class="compass-label"></div>
+        </div>
+
+        <!-- Sunrise / Sunset -->
+        <div class="panel sun-panel">
+          <h3>&#9728; Astronomy</h3>
+          <svg id="sun-arc-svg" viewBox="0 0 300 160" class="sun-arc-svg"></svg>
+          <div class="sun-times">
+            <span>&#127765; <span id="sunrise-time"></span></span>
+            <span>&#127761; <span id="sunset-time"></span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- AIR QUALITY -->
+      <section class="panel aqi-panel">
+        <h3>&#127807; Air Quality</h3>
+        <div class="aqi-main">
+          <div id="aqi-score" class="aqi-score"></div>
+          <div id="aqi-label" class="aqi-label"></div>
+          <div id="aqi-bar" class="aqi-bar"><div id="aqi-fill" class="aqi-fill"></div></div>
+        </div>
+        <div id="pollutants-grid" class="pollutants-grid"></div>
+      </section>
+
+      <!-- HOURLY TIMELINE -->
+      <section class="panel">
+        <h3>&#9203; Hourly Timeline</h3>
+        <div id="hourly-timeline" class="hourly-timeline"></div>
+      </section>
+
+      <!-- CHARTS -->
+      <section class="panel charts-panel">
+        <h3>&#128200; 24-Hour Forecast</h3>
+        <div class="chart-tabs">
+          <button class="chart-tab active" data-chart="temp">Temperature</button>
+          <button class="chart-tab" data-chart="precip">Precipitation %</button>
+        </div>
+        <div class="chart-container">
+          <canvas id="forecast-chart"></canvas>
+        </div>
+      </section>
+
+      <!-- 5-DAY FORECAST -->
+      <section class="panel">
+        <h3>&#128197; 5-Day Forecast</h3>
+        <div id="forecast-strip" class="forecast-strip"></div>
+      </section>
+
+    </main>
+
+    <!-- EMPTY STATE -->
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">&#127752;</div>
+      <p>Search for a city to get started</p>
+    </div>
+
+    <!-- LOADING STATE -->
+    <div id="loading-state" class="loading-state hidden">
+      <div class="spinner"></div>
+      <p>Fetching weather data...</p>
+    </div>
+
+    <!-- ERROR STATE -->
+    <div id="error-state" class="error-state hidden">
+      <div>&#9888;</div>
+      <p id="error-message"></p>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script src="charts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
