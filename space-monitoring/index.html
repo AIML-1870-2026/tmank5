@@ -363,8 +363,12 @@
   tick();
 
   // ── API URLs ─────────────────────────────────────────────────────────────
-  const CAD_URL = '/api/cad';
-  const SEN_URL = '/api/sentry';
+  const LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const PROXY = 'https://corsproxy.io/?url=';
+  const CAD_JPL = 'https://ssd-api.jpl.nasa.gov/cad.api?date-min=now&date-max=%2B30&dist-max=0.05&neo=true&fullname=true&diameter=true';
+  const SEN_JPL = 'https://ssd-api.jpl.nasa.gov/sentry.api';
+  const CAD_URL = LOCAL ? '/api/cad' : PROXY + encodeURIComponent(CAD_JPL);
+  const SEN_URL = LOCAL ? '/api/sentry' : PROXY + encodeURIComponent(SEN_JPL);
 
   // ── Load ─────────────────────────────────────────────────────────────────
   async function loadAll() {
