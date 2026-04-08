@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Switchboard</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Marked.js -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Highlight.js -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" id="hljs-light">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-dark" disabled>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <style>
+    /* ── Variables ───────────────────────────────────────── */
+    :root {
+      --bg: #ffffff;
+      --bg-subtle: #f7f7f6;
+      --border: #e8e8e7;
+      --border-strong: #d1d1cf;
+      --text-primary: #1a1a18;
+      --text-secondary: #6b6b68;
+      --text-muted: #a0a09d;
+      --accent: #1a1a18;
+      --accent-hover: #333330;
+      --success: #16a34a;
+      --error: #dc2626;
+      --warning: #d97706;
+      --openai-color: #10a37f;
+      --anthropic-color: #d4501e;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111110;
+        --bg-subtle: #1a1a18;
+        --border: #2a2a28;
+        --border-strong: #3a3a38;
+        --text-primary: #ededec;
+        --text-secondary: #a0a09d;
+        --text-muted: #6b6b68;
+        --accent: #ededec;
+        --accent-hover: #c8c8c5;
+      }
+    }
+
+    /* ── Reset ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; }
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100;
+    }
+    .header-left h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
+    .header-left p  { font-size: 0.78rem; color: var(--text-muted); margin-top: 1px; }
+    .header-right   { display: flex; align-items: center; gap: 10px; }
+
+    .mode-toggle {
+      display: flex;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .mode-toggle button {
+      padding: 4px 14px;
+      border-radius: 20px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 150ms;
+    }
+    .mode-toggle button.active {
+      background: var(--bg);
+      color: var(--text-primary);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .btn-icon {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.95rem;
+      transition: all 150ms;
+    }
+    .btn-icon:hover { border-color: var(--border-strong); color: var(--text-primary); }
+
+    /* ── Main ────────────────────────────────────────────── */
+    .main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ── Prompt Section ──────────────────────────────────── */
+    .prompt-section { margin-bottom: 16px; }
+
+    .prompt-textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.93rem;
+      line-height: 1.6;
+      resize: vertical;
+      outline: none;
+      transition: border-color 150ms;
+    }
+    .prompt-textarea:focus { border-color: var(--border-strong); }
+    .prompt-textarea::placeholder { color: var(--text-muted); }
+
+    /* Schema editor */
+    .schema-section { margin-top: 10px; display: none; }
+    .schema-section.visible { display: block; }
+    .schema-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .schema-header label { font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; }
+    .schema-textarea {
+      width: 100%;
+      min-height: 90px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-subtle);
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      resize: vertical;
+      outline: none;
+    }
+    .schema-textarea:focus { border-color: var(--border-strong); }
+
+    /* Controls row */
+    .prompt-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .output-mode-toggle {
+      display: flex;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .output-mode-toggle button {
+      padding: 4px 12px;
+      border-radius: 4px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: all 150ms;
+    }
+    .output-mode-toggle button.active {
+      background: var(--bg);
+      color: var(--text-primary);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+
+    .ctrl-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+    }
+    .ctrl-group label { white-space: nowrap; }
+    input[type="range"] { width: 76px; accent-color: var(--accent); cursor: pointer; }
+    .ctrl-group input[type="number"] {
+      width: 62px;
+      padding: 4px 7px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.78rem;
+      outline: none;
+    }
+    .ctrl-group input[type="number"]:focus { border-color: var(--border-strong); }
+
+    select.ctrl-select {
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 0.78rem;
+      outline: none;
+      cursor: pointer;
+    }
+    select.ctrl-select:focus { border-color: var(--border-strong); color: var(--text-primary); }
+
+    .btn-submit {
+      margin-left: auto;
+      padding: 7px 20px;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 150ms;
+      white-space: nowrap;
+    }
+    .btn-submit:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Model Selector ──────────────────────────────────── */
+    .model-selector {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      padding: 10px 14px;
+      background: var(--bg-subtle);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .model-selector-label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-right: 2px;
+    }
+
+    .model-pill {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 11px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--bg);
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 150ms;
+      position: relative;
+    }
+    .model-pill:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-primary); }
+    .model-pill.selected { border-color: var(--accent); color: var(--text-primary); font-weight: 500; }
+    .model-pill:disabled { opacity: 0.38; cursor: not-allowed; }
+
+    .provider-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .provider-dot.openai    { background: var(--openai-color); }
+    .provider-dot.anthropic { background: var(--anthropic-color); }
+
+    /* Tooltip */
+    [data-tip] { position: relative; }
+    [data-tip]::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--text-primary);
+      color: var(--bg);
+      font-size: 0.68rem;
+      padding: 3px 7px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 150ms;
+      z-index: 200;
+    }
+    [data-tip]:hover::after { opacity: 1; }
+
+    /* ── Race Leaderboard ────────────────────────────────── */
+    .leaderboard {
+      display: none;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+    }
+    .leaderboard.visible { display: block; }
+    .leaderboard h3 {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+    .leaderboard-entries { display: flex; flex-direction: column; gap: 7px; }
+    .leaderboard-entry   { display: flex; align-items: center; gap: 10px; }
+    .lb-rank  { font-size: 0.72rem; color: var(--text-muted); width: 18px; text-align: center; font-weight: 600; }
+    .lb-name  { font-size: 0.82rem; color: var(--text-secondary); width: 150px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lb-bar-wrap { flex: 1; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .lb-bar-fill { height: 100%; border-radius: 3px; background: var(--accent); width: 0%; transition: width 300ms ease; }
+    .lb-time  { font-size: 0.75rem; font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); width: 52px; text-align: right; }
+    .lb-flag  { font-size: 0.82rem; width: 20px; text-align: center; }
+
+    /* ── Response Area ───────────────────────────────────── */
+    .response-area {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    /* ── Response Card ───────────────────────────────────── */
+    .response-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      animation: cardIn 150ms ease-out;
+      min-width: 280px;
+      overflow: hidden;
+    }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .response-card.error-card { border-color: var(--error); }
+
+    /* Progress bar */
+    .card-progress { height: 2px; background: transparent; }
+    .card-progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s linear; }
+    .card-progress-fill.indeterminate { animation: prog 1.6s ease infinite; }
+    @keyframes prog {
+      0%   { width: 0%;  margin-left: 0; }
+      50%  { width: 55%; margin-left: 22%; }
+      100% { width: 0%;  margin-left: 100%; }
+    }
+
+    /* Card header */
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-model-info { display: flex; align-items: center; gap: 7px; }
+    .card-model-name { font-size: 0.85rem; font-weight: 600; }
+    .card-badge {
+      font-size: 0.68rem;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
+    .card-badge.openai    { background: rgba(16,163,127,.10); color: var(--openai-color); }
+    .card-badge.anthropic { background: rgba(212,80,30,.10);  color: var(--anthropic-color); }
+
+    .card-status-row { display: flex; align-items: center; gap: 8px; }
+    .card-status { font-size: 0.72rem; color: var(--text-muted); font-weight: 500; }
+    .card-status.streaming { color: var(--openai-color); }
+    .card-status.done      { color: var(--success); }
+    .card-status.error     { color: var(--error); }
+    .card-timer { font-size: 0.72rem; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
+
+    /* Card body */
+    .card-body {
+      padding: 16px;
+      flex: 1;
+      overflow-y: auto;
+      max-height: 520px;
+      min-height: 80px;
+    }
+
+    /* Markdown */
+    .md-content { font-size: 0.85rem; line-height: 1.7; color: var(--text-primary); }
+    .md-content p            { margin-bottom: 9px; }
+    .md-content p:last-child { margin-bottom: 0; }
+    .md-content h1, .md-content h2, .md-content h3, .md-content h4 {
+      margin-top: 14px; margin-bottom: 6px; font-weight: 600; line-height: 1.4;
+    }
+    .md-content h1:first-child,
+    .md-content h2:first-child,
+    .md-content h3:first-child { margin-top: 0; }
+    .md-content ul, .md-content ol { padding-left: 18px; margin-bottom: 9px; }
+    .md-content li { margin-bottom: 3px; }
+    .md-content code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78em;
+      background: var(--bg-subtle);
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .md-content pre {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      margin-bottom: 9px;
+    }
+    .md-content pre code { background: none; padding: 0; font-size: 0.78rem; }
+    .md-content blockquote {
+      border-left: 3px solid var(--border-strong);
+      padding-left: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 9px;
+    }
+    .md-content table { border-collapse: collapse; width: 100%; margin-bottom: 9px; font-size: 0.82em; }
+    .md-content th, .md-content td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; }
+    .md-content th { background: var(--bg-subtle); font-weight: 600; }
+
+    /* Placeholder */
+    .card-placeholder {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .card-placeholder .dots::after {
+      content: '';
+      animation: dotdot 1.4s steps(3, end) infinite;
+    }
+    @keyframes dotdot {
+      0%   { content: ''; }
+      33%  { content: '.'; }
+      66%  { content: '..'; }
+      100% { content: '...'; }
+    }
+
+    /* Error */
+    .card-error-wrap { display: flex; flex-direction: column; gap: 6px; }
+    .card-error-icon  { font-size: 1.1rem; }
+    .card-error-title { font-size: 0.85rem; font-weight: 600; color: var(--error); }
+    .card-error-body  { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.55; }
+
+    /* JSON display */
+    .json-display {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      overflow-x: auto;
+    }
+    .json-display pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: var(--text-primary);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Schema validator */
+    .schema-validator {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--bg-subtle);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .schema-validator-title {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 7px;
+    }
+    .schema-validator-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      padding: 2px 0;
+    }
+    .schema-validator-summary {
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-top: 7px;
+      padding-top: 7px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Card footer */
+    .card-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 16px 11px;
+      border-top: 1px solid var(--border);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+    .card-metrics { display: flex; align-items: center; gap: 10px; flex: 1; flex-wrap: wrap; }
+    .card-footer-actions { display: flex; align-items: center; gap: 5px; }
+    .btn-card-action {
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem;
+      transition: all 150ms;
+    }
+    .btn-card-action:hover { border-color: var(--border-strong); color: var(--text-primary); }
+    .btn-retry {
+      font-size: 0.72rem;
+      padding: 3px 9px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--bg);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 150ms;
+    }
+    .btn-retry:hover { border-color: var(--border-strong); color: var(--text-primary); }
+
+    /* ── Settings Drawer ─────────────────────────────────── */
+    .drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.18);
+      z-index: 300;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 250ms ease-out;
+    }
+    .drawer-overlay.open { opacity: 1; pointer-events: all; }
+
+    .drawer {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: 360px;
+      max-width: 100vw;
+      background: var(--bg);
+      border-left: 1px solid var(--border);
+      z-index: 301;
+      transform: translateX(100%);
+      transition: transform 250ms ease-out;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .drawer.open { transform: translateX(0); }
+
+    .drawer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .drawer-title { font-size: 0.93rem; font-weight: 600; }
+    .drawer-body  { flex: 1; overflow-y: auto; padding: 20px; }
+    .drawer-section { margin-bottom: 22px; }
+    .drawer-section:last-child { margin-bottom: 0; }
+
+    .drawer-section-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); display: inline-block; }
+    .status-dot.on { background: var(--success); }
+
+    .key-input-wrap { position: relative; display: flex; align-items: center; }
+    .key-input {
+      width: 100%;
+      padding: 8px 38px 8px 11px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      outline: none;
+      transition: border-color 150ms;
+    }
+    .key-input:focus { border-color: var(--border-strong); }
+    .key-input::placeholder { font-family: 'DM Sans', sans-serif; color: var(--text-muted); }
+    .key-vis-btn {
+      position: absolute;
+      right: 9px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      display: flex;
+      align-items: center;
+      padding: 2px;
+    }
+    .key-vis-btn:hover { color: var(--text-primary); }
+
+    .file-drop {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      text-align: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      transition: all 150ms;
+    }
+    .file-drop:hover, .file-drop.dragover {
+      border-color: var(--border-strong);
+      color: var(--text-secondary);
+      background: var(--bg-subtle);
+    }
+    .file-drop input { display: none; }
+
+    .privacy-notice {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+      padding: 11px 12px;
+      background: var(--bg-subtle);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .btn-danger {
+      padding: 7px 14px;
+      background: transparent;
+      color: var(--error);
+      border: 1px solid var(--error);
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 150ms;
+      width: 100%;
+    }
+    .btn-danger:hover { background: var(--error); color: #fff; }
+
+    .divider { height: 1px; background: var(--border); margin: 18px 0; }
+
+    /* ── Modal ───────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      z-index: 400;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 150ms;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 820px;
+      max-height: 82vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title { font-size: 0.93rem; font-weight: 600; }
+    .modal-body  { padding: 20px; overflow-y: auto; flex: 1; }
+
+    /* ── Responsive ──────────────────────────────────────── */
+    @media (max-width: 1200px) {
+      .response-area { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .header { padding: 11px 14px; }
+      .main   { padding: 14px; }
+      .header-left p { display: none; }
+      .mode-toggle button { padding: 4px 10px; }
+      .response-area { grid-template-columns: 1fr; }
+      .prompt-controls { flex-direction: column; align-items: stretch; }
+      .btn-submit { margin-left: 0; }
+      .drawer { width: 100%; }
+      .lb-name { width: 110px; }
+    }
+
+    /* ── Accessibility ───────────────────────────────────── */
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══════════════════════════════════════════ -->
+<header class="header">
+  <div class="header-left">
+    <h1>LLM Switchboard</h1>
+    <p>Compare AI models side by side</p>
+  </div>
+  <div class="header-right">
+    <div class="mode-toggle" role="group" aria-label="Display mode">
+      <button id="btn-side" class="active" onclick="setMode('side')">Side-by-Side</button>
+      <button id="btn-race" onclick="setMode('race')">Race Mode</button>
+    </div>
+    <button class="btn-icon" onclick="openDrawer()" aria-label="Open settings">⚙️</button>
+  </div>
+</header>
+
+<!-- ═══ MAIN ══════════════════════════════════════════════ -->
+<main class="main">
+
+  <!-- Prompt Section -->
+  <section class="prompt-section" aria-label="Prompt input">
+    <textarea id="prompt-input" class="prompt-textarea" placeholder="Enter your prompt here…" aria-label="Prompt"></textarea>
+
+    <!-- Schema Editor -->
+    <div class="schema-section" id="schema-section">
+      <div class="schema-header">
+        <label for="schema-input">JSON Schema</label>
+        <select class="ctrl-select" id="schema-tmpl-sel" onchange="applySchemaTemplate(this.value)" aria-label="Schema template">
+          <option value="">— Template —</option>
+          <option value="element">Element Info</option>
+          <option value="movie">Movie Review</option>
+          <option value="recipe">Recipe</option>
+          <option value="news">News Summary</option>
+          <option value="study">Study Guide</option>
+          <option value="custom">Custom (blank)</option>
+        </select>
+      </div>
+      <textarea id="schema-input" class="schema-textarea" placeholder='{ "type": "object", "properties": { ... } }' aria-label="JSON Schema"></textarea>
+    </div>
+
+    <!-- Controls -->
+    <div class="prompt-controls">
+      <div class="output-mode-toggle" role="group" aria-label="Output mode">
+        <button id="btn-unstruct" class="active" onclick="setOutputMode('unstructured')">Unstructured</button>
+        <button id="btn-struct"              onclick="setOutputMode('structured')">Structured (JSON)</button>
+      </div>
+
+      <div class="ctrl-group">
+        <label for="temp-range">Temp</label>
+        <input type="range" id="temp-range" min="0" max="1" step="0.1" value="0.7"
+          oninput="document.getElementById('temp-val').textContent = this.value"
+          aria-label="Temperature">
+        <span id="temp-val" style="font-family:'JetBrains Mono',monospace;font-size:0.78rem;color:var(--text-secondary);width:28px;">0.7</span>
+      </div>
+
+      <div class="ctrl-group">
+        <label for="max-tok">Max tokens</label>
+        <input type="number" id="max-tok" value="1024" min="1" max="32000" aria-label="Max tokens">
+      </div>
+
+      <select class="ctrl-select" id="example-sel" onchange="applyExamplePrompt(this.value)" aria-label="Example prompts">
+        <option value="">Example prompts…</option>
+        <option value="explain">Explain it simply</option>
+        <option value="story">Creative story</option>
+        <option value="code">Code challenge</option>
+        <option value="debate">Debate this</option>
+        <option value="element">Periodic table</option>
+        <option value="career">Career advice</option>
+      </select>
+
+      <button class="btn-submit" id="btn-submit" onclick="handleSubmit()">Send to All</button>
+    </div>
+  </section>
+
+  <!-- Model Selector Bar -->
+  <div class="model-selector" id="model-selector" role="group" aria-label="Select models">
+    <span class="model-selector-label">Models</span>
+  </div>
+
+  <!-- Race Leaderboard -->
+  <div class="leaderboard" id="leaderboard" aria-live="polite">
+    <h3>Live Race</h3>
+    <div class="leaderboard-entries" id="lb-entries"></div>
+  </div>
+
+  <!-- Response Area -->
+  <div class="response-area" id="response-area" aria-live="polite" aria-label="Model responses"></div>
+
+</main>
+
+<!-- ═══ SETTINGS DRAWER ═══════════════════════════════════ -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="drawer-header">
+    <span class="drawer-title">Settings</span>
+    <button class="btn-icon" onclick="closeDrawer()" aria-label="Close settings">✕</button>
+  </div>
+  <div class="drawer-body">
+
+    <!-- OpenAI -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">
+        <span style="color:var(--openai-color)">●</span> OpenAI
+        <span class="status-dot" id="openai-dot" title="API key status"></span>
+      </div>
+      <div class="key-input-wrap">
+        <input type="password" class="key-input" id="openai-input" placeholder="sk-…"
+          oninput="handleKey('openai', this.value)" aria-label="OpenAI API key">
+        <button class="key-vis-btn" onclick="toggleVis('openai')" aria-label="Toggle OpenAI key visibility">👁</button>
+      </div>
+    </div>
+
+    <!-- Anthropic -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">
+        <span style="color:var(--anthropic-color)">●</span> Anthropic
+        <span class="status-dot" id="anthropic-dot" title="API key status"></span>
+      </div>
+      <div class="key-input-wrap">
+        <input type="password" class="key-input" id="anthropic-input" placeholder="sk-ant-…"
+          oninput="handleKey('anthropic', this.value)" aria-label="Anthropic API key">
+        <button class="key-vis-btn" onclick="toggleVis('anthropic')" aria-label="Toggle Anthropic key visibility">👁</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- File Upload -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">File Upload</div>
+      <div class="file-drop" id="file-drop"
+        role="button" tabindex="0" aria-label="Upload .env or .csv file"
+        onclick="document.getElementById('file-input').click()"
+        onkeydown="if(e.key==='Enter'||e.key===' ')document.getElementById('file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('dragover')"
+        ondragleave="this.classList.remove('dragover')"
+        ondrop="handleFileDrop(event)">
+        <input type="file" id="file-input" accept=".env,.csv,.txt" onchange="handleFileUpload(this.files[0])">
+        <div>📄 Drop a <code>.env</code> or <code>.csv</code> file</div>
+        <div style="margin-top:4px;font-size:0.72rem;color:var(--text-muted)">or click to browse</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Privacy Notice -->
+    <div class="drawer-section">
+      <div class="privacy-notice">
+        🔒 <strong>Your API keys are stored in memory only</strong> and are never saved or sent anywhere except the provider's API. Keys are cleared when you refresh or close this page.
+      </div>
+    </div>
+
+    <!-- Clear Keys -->
+    <div class="drawer-section">
+      <button class="btn-danger" onclick="clearKeys()">Clear All Keys</button>
+    </div>
+
+  </div>
+</aside>
+
+<!-- ═══ FULLSCREEN MODAL ══════════════════════════════════ -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal()" role="dialog" aria-modal="true" aria-label="Full response">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Response</span>
+      <button class="btn-icon" onclick="closeModal()" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body md-content" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ═══ SCRIPT ════════════════════════════════════════════ -->
+<script>
+/* ── State ────────────────────────────────────────────── */
+let openaiKey    = '';
+let anthropicKey = '';
+let appMode      = 'side';       // 'side' | 'race'
+let outputMode   = 'unstructured'; // 'unstructured' | 'structured'
+let selectedModels = new Set(['gpt-4o', 'gpt-4o-mini']);
+const responseTexts = new Map(); // modelId → raw text
+let raceFinishedCount = 0;
+
+/* ── Models ───────────────────────────────────────────── */
+const MODELS = [
+  { id:'gpt-4o',                  name:'GPT-4o',            provider:'openai',    in: 2.50,  out: 10.00 },
+  { id:'gpt-4o-mini',             name:'GPT-4o mini',       provider:'openai',    in: 0.15,  out: 0.60  },
+  { id:'gpt-4-turbo',             name:'GPT-4 Turbo',       provider:'openai',    in: 10.00, out: 30.00 },
+  { id:'gpt-3.5-turbo',           name:'GPT-3.5 Turbo',     provider:'openai',    in: 0.50,  out: 1.50  },
+  { id:'o1',                      name:'o1',                provider:'openai',    in: 15.00, out: 60.00 },
+  { id:'o1-mini',                 name:'o1-mini',           provider:'openai',    in: 1.10,  out: 4.40  },
+  { id:'o3-mini',                 name:'o3-mini',           provider:'openai',    in: 1.10,  out: 4.40  },
+  { id:'claude-sonnet-4-5',       name:'Claude 3.5 Sonnet', provider:'anthropic', in: 3.00,  out: 15.00 },
+  { id:'claude-haiku-4-5',        name:'Claude 3.5 Haiku',  provider:'anthropic', in: 0.80,  out: 4.00  },
+  { id:'claude-3-opus-20240229',  name:'Claude 3 Opus',     provider:'anthropic', in: 15.00, out: 75.00 },
+  { id:'claude-3-sonnet-20240229',name:'Claude 3 Sonnet',   provider:'anthropic', in: 3.00,  out: 15.00 },
+  { id:'claude-3-haiku-20240307', name:'Claude 3 Haiku',    provider:'anthropic', in: 0.25,  out: 1.25  },
+];
+
+/* ── Example Prompts ──────────────────────────────────── */
+const EXAMPLES = {
+  explain: "Explain how transformers work in machine learning, as if I'm a curious high schooler.",
+  story:   "Write a 3-paragraph short story set on a space station where the AI has developed a fear of silence.",
+  code:    "Write a Python function that takes a list of integers and returns the two that sum closest to zero.",
+  debate:  "Make the strongest possible argument that social media has been a net positive for democracy.",
+  element: "Tell me something fascinating about the element Osmium that most people don't know.",
+  career:  "I'm a sophomore studying data science. What three skills should I prioritize developing this year?",
+};
+
+/* ── Schema Templates ─────────────────────────────────── */
+const SCHEMAS = {
+  element: { type:"object", properties:{ name:{type:"string"}, symbol:{type:"string"}, atomic_number:{type:"integer"}, fun_fact:{type:"string"} }, required:["name","symbol","atomic_number","fun_fact"] },
+  movie:   { type:"object", properties:{ title:{type:"string"}, rating:{type:"number",minimum:1,maximum:10}, pros:{type:"array",items:{type:"string"}}, cons:{type:"array",items:{type:"string"}}, summary:{type:"string"} }, required:["title","rating","pros","cons","summary"] },
+  recipe:  { type:"object", properties:{ name:{type:"string"}, ingredients:{type:"array",items:{type:"string"}}, steps:{type:"array",items:{type:"string"}}, prep_time:{type:"string"} }, required:["name","ingredients","steps","prep_time"] },
+  news:    { type:"object", properties:{ headline:{type:"string"}, source:{type:"string"}, date:{type:"string"}, key_points:{type:"array",items:{type:"string"}}, sentiment:{type:"string",enum:["positive","negative","neutral"]} }, required:["headline","source","date","key_points","sentiment"] },
+  study:   { type:"object", properties:{ topic:{type:"string"}, key_concepts:{type:"array",items:{type:"string"}}, quiz_questions:{type:"array",items:{type:"string"}} }, required:["topic","key_concepts","quiz_questions"] },
+  custom:  null,
+};
+
+/* ── Init ─────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  buildPills();
+  syncHljsTheme();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncHljsTheme);
+  marked.setOptions({ breaks: true });
+});
+
+function syncHljsTheme() {
+  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.getElementById('hljs-light').disabled = dark;
+  document.getElementById('hljs-dark').disabled  = !dark;
+}
+
+/* ── Mode ─────────────────────────────────────────────── */
+function setMode(m) {
+  appMode = m;
+  document.getElementById('btn-side').classList.toggle('active', m === 'side');
+  document.getElementById('btn-race').classList.toggle('active', m === 'race');
+}
+
+/* ── Output Mode ──────────────────────────────────────── */
+function setOutputMode(m) {
+  outputMode = m;
+  document.getElementById('btn-unstruct').classList.toggle('active', m === 'unstructured');
+  document.getElementById('btn-struct').classList.toggle('active', m === 'structured');
+  document.getElementById('schema-section').classList.toggle('visible', m === 'structured');
+}
+
+/* ── Example Prompts ──────────────────────────────────── */
+function applyExamplePrompt(key) {
+  if (!key) return;
+  document.getElementById('prompt-input').value = EXAMPLES[key] || '';
+  document.getElementById('example-sel').value = '';
+}
+
+/* ── Schema Templates ─────────────────────────────────── */
+function applySchemaTemplate(key) {
+  if (!key) return;
+  const schema = SCHEMAS[key];
+  document.getElementById('schema-input').value = schema ? JSON.stringify(schema, null, 2) : '';
+  document.getElementById('schema-tmpl-sel').value = '';
+}
+
+/* ── Model Pills ──────────────────────────────────────── */
+function buildPills() {
+  const bar = document.getElementById('model-selector');
+  bar.querySelectorAll('.model-pill').forEach(p => p.remove());
+
+  MODELS.forEach(m => {
+    const hasKey = m.provider === 'openai' ? !!openaiKey : !!anthropicKey;
+    const pill = document.createElement('button');
+    pill.className = 'model-pill' + (selectedModels.has(m.id) ? ' selected' : '');
+    pill.disabled = !hasKey;
+    if (!hasKey) pill.setAttribute('data-tip', 'Add an API key in Settings');
+    pill.setAttribute('aria-pressed', selectedModels.has(m.id) ? 'true' : 'false');
+    pill.setAttribute('aria-label', `${m.name} (${m.provider})`);
+    pill.innerHTML = `<span class="provider-dot ${m.provider}"></span>${m.name}`;
+    pill.addEventListener('click', () => togglePill(m.id, pill));
+    bar.appendChild(pill);
+  });
+}
+
+function togglePill(id, pill) {
+  if (selectedModels.has(id)) {
+    selectedModels.delete(id);
+    pill.classList.remove('selected');
+    pill.setAttribute('aria-pressed', 'false');
+  } else {
+    selectedModels.add(id);
+    pill.classList.add('selected');
+    pill.setAttribute('aria-pressed', 'true');
+  }
+}
+
+/* ── API Keys ─────────────────────────────────────────── */
+function handleKey(provider, value) {
+  const v = value.trim();
+  if (provider === 'openai') openaiKey = v;
+  else anthropicKey = v;
+  document.getElementById(`${provider}-dot`).classList.toggle('on', !!v);
+  buildPills();
+}
+
+function toggleVis(provider) {
+  const inp = document.getElementById(`${provider}-input`);
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function clearKeys() {
+  openaiKey = anthropicKey = '';
+  ['openai','anthropic'].forEach(p => {
+    document.getElementById(`${p}-input`).value = '';
+    document.getElementById(`${p}-dot`).classList.remove('on');
+  });
+  buildPills();
+}
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  document.getElementById('file-drop').classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFileUpload(f);
+}
+
+function handleFileUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => parseKeyFile(e.target.result);
+  reader.readAsText(file);
+  document.getElementById('file-input').value = '';
+}
+
+function parseKeyFile(text) {
+  const lines = text.split('\n');
+  let found = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = line.match(/^(OPENAI_API_KEY|ANTHROPIC_API_KEY)[=,]\s*(.+)$/);
+    if (!m) continue;
+    const val = m[2].trim().replace(/^["']|["']$/g, '');
+    if (m[1] === 'OPENAI_API_KEY') {
+      openaiKey = val;
+      document.getElementById('openai-input').value = val;
+      document.getElementById('openai-dot').classList.toggle('on', !!val);
+      found = true;
+    } else {
+      anthropicKey = val;
+      document.getElementById('anthropic-input').value = val;
+      document.getElementById('anthropic-dot').classList.toggle('on', !!val);
+      found = true;
+    }
+  }
+  if (found) buildPills();
+}
+
+/* ── Drawer ───────────────────────────────────────────── */
+function openDrawer() {
+  document.getElementById('drawer-overlay').classList.add('open');
+  document.getElementById('drawer').classList.add('open');
+  setTimeout(() => document.getElementById('openai-input').focus(), 260);
+}
+function closeDrawer() {
+  document.getElementById('drawer-overlay').classList.remove('open');
+  document.getElementById('drawer').classList.remove('open');
+}
+
+/* ── Submit ───────────────────────────────────────────── */
+async function handleSubmit() {
+  const prompt = document.getElementById('prompt-input').value.trim();
+  if (!prompt) { document.getElementById('prompt-input').focus(); return; }
+
+  const active = [...selectedModels].filter(id => {
+    const m = MODELS.find(x => x.id === id);
+    return m && (m.provider === 'openai' ? !!openaiKey : !!anthropicKey);
+  });
+  if (!active.length) {
+    alert('Please select at least one model and add the corresponding API key in Settings.');
+    return;
+  }
+
+  const temp     = parseFloat(document.getElementById('temp-range').value);
+  const maxTok   = parseInt(document.getElementById('max-tok').value) || 1024;
+  const schema   = outputMode === 'structured' ? document.getElementById('schema-input').value.trim() : null;
+
+  // Reset UI
+  const submitBtn = document.getElementById('btn-submit');
+  submitBtn.disabled = true; submitBtn.textContent = 'Running…';
+  document.getElementById('response-area').innerHTML = '';
+  responseTexts.clear();
+  raceFinishedCount = 0;
+
+  const lb = document.getElementById('leaderboard');
+  document.getElementById('lb-entries').innerHTML = '';
+  lb.classList.toggle('visible', appMode === 'race');
+
+  // Launch all
+  const promises = active.map(id => {
+    const model = MODELS.find(m => m.id === id);
+    const card  = buildCard(model);
+    document.getElementById('response-area').appendChild(card);
+    if (appMode === 'race') buildLbEntry(model);
+    return runModel(model, prompt, temp, maxTok, schema);
+  });
+
+  await Promise.allSettled(promises);
+  submitBtn.disabled = false; submitBtn.textContent = 'Send to All';
+}
+
+/* ── Card Builder ─────────────────────────────────────── */
+function buildCard(model) {
+  const el = document.createElement('div');
+  el.className = 'response-card';
+  el.id = `card-${model.id}`;
+  el.innerHTML = `
+    <div class="card-progress"><div class="card-progress-fill indeterminate" id="prog-${model.id}"></div></div>
+    <div class="card-header">
+      <div class="card-model-info">
+        <span class="card-model-name">${model.name}</span>
+        <span class="card-badge ${model.provider}">${model.provider === 'openai' ? 'OpenAI' : 'Anthropic'}</span>
+      </div>
+      <div class="card-status-row">
+        <span class="card-status" id="cs-${model.id}">Waiting…</span>
+        <span class="card-timer"  id="ct-${model.id}">0.0s</span>
+      </div>
+    </div>
+    <div class="card-body" id="cb-${model.id}">
+      <div class="card-placeholder"><span class="dots"></span> Waiting for response</div>
+    </div>
+    <div class="card-footer">
+      <div class="card-metrics">
+        <span id="cm-tok-${model.id}"  style="display:none"></span>
+        <span id="cm-cost-${model.id}" style="display:none"></span>
+      </div>
+      <div class="card-footer-actions">
+        <button class="btn-card-action" id="ca-copy-${model.id}"   onclick="copyCard('${model.id}')"   aria-label="Copy response" title="Copy"   style="display:none">📋</button>
+        <button class="btn-card-action" id="ca-expand-${model.id}" onclick="expandCard('${model.id}')" aria-label="Expand response" title="Expand" style="display:none">⤢</button>
+      </div>
+    </div>`;
+  return el;
+}
+
+/* ── Race Leaderboard ─────────────────────────────────── */
+function buildLbEntry(model) {
+  const el = document.createElement('div');
+  el.className = 'leaderboard-entry';
+  el.id = `lb-${model.id}`;
+  el.innerHTML = `
+    <span class="lb-rank" id="lb-rank-${model.id}">—</span>
+    <span class="lb-name">${model.name}</span>
+    <div class="lb-bar-wrap"><div class="lb-bar-fill" id="lb-bar-${model.id}"></div></div>
+    <span class="lb-time" id="lb-time-${model.id}">0.0s</span>
+    <span class="lb-flag" id="lb-flag-${model.id}"></span>`;
+  document.getElementById('lb-entries').appendChild(el);
+}
+
+/* ── Run Model ────────────────────────────────────────── */
+async function runModel(model, prompt, temp, maxTok, schema) {
+  const t0 = performance.now();
+  const elapsed = () => ((performance.now() - t0) / 1000).toFixed(1);
+
+  // Live timer
+  const timerId = setInterval(() => {
+    const t = elapsed();
+    setEl(`ct-${model.id}`, `${t}s`);
+    if (appMode === 'race') setEl(`lb-time-${model.id}`, `${t}s`);
+  }, 100);
+
+  setStatus(model.id, 'streaming', 'Streaming…');
+
+  try {
+    if (model.provider === 'anthropic') {
+      await anthropicCors(model, timerId, t0);
+      return;
+    }
+    await streamOpenAI(model, prompt, temp, maxTok, schema, timerId, t0);
+  } catch (err) {
+    clearInterval(timerId);
+    const t = elapsed();
+    showCardError(model.id, t, interpretError(err), !!err._timeout);
+    if (appMode === 'race') finishLb(model.id, t, true);
+  }
+}
+
+/* ── Anthropic CORS ───────────────────────────────────── */
+async function anthropicCors(model, timerId, t0) {
+  await sleep(380);
+  clearInterval(timerId);
+  const t = ((performance.now() - t0) / 1000).toFixed(1);
+  setEl(`ct-${model.id}`, `${t}s`);
+  doneProgress(model.id);
+  setStatus(model.id, 'error', 'CORS');
+  document.getElementById(`card-${model.id}`).classList.add('error-card');
+  document.getElementById(`cb-${model.id}`).innerHTML = `
+    <div class="card-error-wrap">
+      <div class="card-error-icon">🌐</div>
+      <div class="card-error-title">Direct browser access blocked</div>
+      <div class="card-error-body">
+        <strong>Anthropic's API is designed to be called from a backend server and blocks direct browser requests (CORS restriction).</strong><br><br>
+        To use Claude models, you'd need a small server or proxy — for example, a Node.js/Express app or serverless function that forwards your request.<br><br>
+        <em>OpenAI models work great from the browser!</em>
+      </div>
+    </div>`;
+  if (appMode === 'race') finishLb(model.id, t, true);
+}
+
+/* ── OpenAI Streaming ─────────────────────────────────── */
+async function streamOpenAI(model, prompt, temp, maxTok, schema, timerId, t0) {
+  const isReasoning = ['o1', 'o1-mini', 'o3-mini'].includes(model.id);
+
+  // Build messages
+  const messages = [];
+  if (schema) {
+    let sysMsg = `You must respond ONLY with valid JSON that strictly matches this JSON schema. Do not include any other text, markdown, or explanation.\nSchema:\n${schema}`;
+    try { JSON.parse(schema); } catch(e) { sysMsg = 'You must respond ONLY with valid JSON. Do not include any other text.'; }
+    messages.push({ role: 'system', content: sysMsg });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  const body = { model: model.id, messages };
+
+  if (isReasoning) {
+    body.max_completion_tokens = maxTok;
+    // Reasoning models: no temperature, no streaming
+  } else {
+    body.temperature = temp;
+    body.max_tokens  = maxTok;
+    body.stream      = true;
+    body.stream_options = { include_usage: true };
+  }
+
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => {
+    const e = new Error('Request timed out'); e._timeout = true; controller.abort(e);
+  }, 30000);
+
+  let res;
+  try {
+    res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error?.message || `HTTP ${res.status}`);
+  }
+
+  // Prepare card body
+  const cb = document.getElementById(`cb-${model.id}`);
+  cb.innerHTML = schema
+    ? `<div class="json-display"><pre id="jp-${model.id}"></pre></div>`
+    : `<div class="md-content" id="md-${model.id}"></div>`;
+
+  let rawText = '', inputTok = 0, outputTok = 0;
+
+  if (isReasoning) {
+    const data = await res.json();
+    rawText   = data.choices?.[0]?.message?.content || '';
+    inputTok  = data.usage?.prompt_tokens     || 0;
+    outputTok = data.usage?.completion_tokens || 0;
+    renderChunk(model.id, rawText, schema);
+  } else {
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const chunk = line.slice(6).trim();
+        if (chunk === '[DONE]') continue;
+        try {
+          const parsed = JSON.parse(chunk);
+          const delta  = parsed.choices?.[0]?.delta?.content;
+          if (delta) { rawText += delta; renderChunk(model.id, rawText, schema); }
+          if (parsed.usage) {
+            inputTok  = parsed.usage.prompt_tokens     || 0;
+            outputTok = parsed.usage.completion_tokens || 0;
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
+  // Finish
+  clearInterval(timerId);
+  const t = ((performance.now() - t0) / 1000).toFixed(1);
+  setEl(`ct-${model.id}`, `${t}s`);
+  doneProgress(model.id);
+  setStatus(model.id, 'done', 'Done');
+  updateMetrics(model, inputTok, outputTok, t);
+  responseTexts.set(model.id, rawText);
+  show(`ca-copy-${model.id}`); show(`ca-expand-${model.id}`);
+
+  if (schema) renderValidator(model.id, rawText, schema);
+  if (appMode === 'race') finishLb(model.id, t, false);
+}
+
+/* ── Render chunk ─────────────────────────────────────── */
+function renderChunk(id, text, schema) {
+  if (schema) {
+    const pre = document.getElementById(`jp-${id}`);
+    if (pre) pre.textContent = text;
+  } else {
+    const md = document.getElementById(`md-${id}`);
+    if (md) {
+      md.innerHTML = marked.parse(text);
+      md.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+    }
+  }
+}
+
+/* ── Schema Validator ─────────────────────────────────── */
+function renderValidator(modelId, rawText, schemaStr) {
+  const cb = document.getElementById(`cb-${modelId}`);
+  if (!cb) return;
+
+  let schema, data, parseErr;
+  try { schema = JSON.parse(schemaStr); } catch(e) { return; }
+  try { data   = JSON.parse(rawText);   } catch(e) { parseErr = e.message; }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'schema-validator';
+  wrap.innerHTML = `<div class="schema-validator-title">Schema Validation</div>`;
+
+  if (parseErr) {
+    wrap.innerHTML += `<div class="schema-validator-item">❌ <span>JSON parse error: ${esc(parseErr)}</span></div>`;
+    cb.appendChild(wrap); return;
+  }
+
+  const props    = schema.properties || {};
+  const required = schema.required   || [];
+  let matched = 0, total = Object.keys(props).length;
+
+  for (const [field, fs] of Object.entries(props)) {
+    const isReq   = required.includes(field);
+    const present = data && field in data;
+    if (!present && isReq) {
+      wrap.innerHTML += `<div class="schema-validator-item">❌ <code>${esc(field)}</code> — missing required field</div>`;
+    } else if (!present) {
+      wrap.innerHTML += `<div class="schema-validator-item">⚠️ <code>${esc(field)}</code> — optional, not present</div>`;
+      matched++;
+    } else {
+      const actual   = Array.isArray(data[field]) ? 'array' : typeof data[field];
+      const expected = fs.type;
+      const ok = !expected || actual === expected || (expected === 'integer' && Number.isInteger(data[field]));
+      if (!ok) {
+        wrap.innerHTML += `<div class="schema-validator-item">⚠️ <code>${esc(field)}</code> — type mismatch (expected ${expected}, got ${actual})</div>`;
+      } else {
+        wrap.innerHTML += `<div class="schema-validator-item">✅ <code>${esc(field)}</code></div>`;
+      }
+      matched++;
+    }
+  }
+
+  const summary = document.createElement('div');
+  summary.className = 'schema-validator-summary';
+  summary.textContent = `${matched}/${total} fields matched schema`;
+  wrap.appendChild(summary);
+  cb.appendChild(wrap);
+}
+
+/* ── Card helpers ─────────────────────────────────────── */
+function setStatus(id, cls, label) {
+  const el = document.getElementById(`cs-${id}`);
+  if (!el) return;
+  el.textContent = label;
+  el.className   = `card-status ${cls}`;
+}
+
+function doneProgress(id) {
+  const p = document.getElementById(`prog-${id}`);
+  if (!p) return;
+  p.classList.remove('indeterminate');
+  p.style.width = '100%';
+}
+
+function showCardError(id, t, msg, isTimeout) {
+  const card = document.getElementById(`card-${id}`);
+  const cb   = document.getElementById(`cb-${id}`);
+  setEl(`ct-${id}`, `${t}s`);
+  doneProgress(id);
+  setStatus(id, 'error', 'Error');
+  if (card) card.classList.add('error-card');
+  if (cb) cb.innerHTML = `
+    <div class="card-error-wrap">
+      <div class="card-error-icon">⚠️</div>
+      <div class="card-error-title">Request failed</div>
+      <div class="card-error-body">${esc(msg)}</div>
+    </div>`;
+  if (isTimeout) {
+    const footer = document.querySelector(`#card-${id} .card-metrics`);
+    if (footer) {
+      const btn = document.createElement('button');
+      btn.className = 'btn-retry';
+      btn.textContent = '↻ Retry';
+      btn.onclick = () => location.reload(); // simple: just reload
+      footer.appendChild(btn);
+    }
+  }
+}
+
+function updateMetrics(model, inTok, outTok, elapsed) {
+  const tokEl  = document.getElementById(`cm-tok-${model.id}`);
+  const costEl = document.getElementById(`cm-cost-${model.id}`);
+  if (tokEl)  { tokEl.textContent  = `↑ ${inTok} in · ↓ ${outTok} out`; tokEl.style.display  = ''; }
+  if (costEl) {
+    const cost = (inTok / 1e6 * model.in) + (outTok / 1e6 * model.out);
+    costEl.textContent = `~$${cost.toFixed(4)}`; costEl.style.display = '';
+  }
+}
+
+/* ── Copy & Expand ────────────────────────────────────── */
+function copyCard(id) {
+  navigator.clipboard.writeText(responseTexts.get(id) || '').catch(console.error);
+}
+
+function expandCard(id) {
+  const model = MODELS.find(m => m.id === id);
+  const text  = responseTexts.get(id) || '';
+  document.getElementById('modal-title').textContent = model?.name || id;
+  const body = document.getElementById('modal-body');
+  body.innerHTML = marked.parse(text);
+  body.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+
+/* ── Race helpers ─────────────────────────────────────── */
+function finishLb(id, elapsed, error) {
+  raceFinishedCount++;
+  setEl(`lb-rank-${id}`, `#${raceFinishedCount}`);
+  setEl(`lb-time-${id}`, `${elapsed}s`);
+  setEl(`lb-flag-${id}`, error ? '❌' : '🏁');
+  const bar = document.getElementById(`lb-bar-${id}`);
+  if (bar) bar.style.width = '100%';
+}
+
+/* ── Keyboard shortcuts ───────────────────────────────── */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeDrawer(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleSubmit();
+});
+
+/* ── Tiny helpers ─────────────────────────────────────── */
+function setEl(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
+function show(id)         { const el = document.getElementById(id); if (el) el.style.display = ''; }
+function sleep(ms)        { return new Promise(r => setTimeout(r, ms)); }
+function esc(str)         {
+  return String(str||'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+function interpretError(err) {
+  const msg = (err?.message || '').toLowerCase();
+  if (err?._timeout || msg.includes('timeout') || err?.name === 'AbortError') return 'Request timed out';
+  if (msg.includes('failed to fetch') || msg.includes('networkerror')) return 'Network error — check your connection';
+  if (msg.includes('401') || msg.includes('invalid api key') || msg.includes('incorrect api key')) return 'Invalid API key — check your key in Settings';
+  if (msg.includes('429') || msg.includes('rate limit')) return 'Rate limit reached — wait a moment and try again';
+  return err?.message || 'Unknown error';
+}
+</script>
+</body>
+</html>
