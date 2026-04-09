@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Product Review Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --border: #e2e5ea;
+    --text: #1a1d23;
+    --text-muted: #6b7280;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-light: #eef2ff;
+    --star-on: #f59e0b;
+    --star-off: #d1d5db;
+    --pill-bg: #f3f4f6;
+    --pill-active: #4f46e5;
+    --pill-active-text: #ffffff;
+    --toggle-bg: #f3f4f6;
+    --toggle-active: #4f46e5;
+    --shadow: 0 1px 4px rgba(0,0,0,.06);
+    --shadow-md: 0 4px 16px rgba(0,0,0,.08);
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d23;
+      --border: #2d3140;
+      --text: #e8eaf0;
+      --text-muted: #8b92a5;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-light: #1e1b4b;
+      --star-off: #3d4155;
+      --pill-bg: #2d3140;
+      --toggle-bg: #2d3140;
+      --shadow: 0 1px 4px rgba(0,0,0,.3);
+      --shadow-md: 0 4px 16px rgba(0,0,0,.4);
+    }
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  header h1 {
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: -.3px;
+  }
+  header p {
+    color: var(--text-muted);
+    font-size: .9rem;
+    margin-top: 4px;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+  }
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: block;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 7px;
+  }
+  input[type="text"], textarea, select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: .92rem;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: border-color .15s;
+  }
+  input[type="text"]:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+  }
+  textarea { resize: vertical; min-height: 80px; }
+
+  /* Stars */
+  .stars { display: flex; gap: 6px; cursor: pointer; }
+  .star {
+    font-size: 1.7rem;
+    color: var(--star-off);
+    transition: color .1s, transform .1s;
+    user-select: none;
+  }
+  .star.on { color: var(--star-on); }
+  .star:hover { transform: scale(1.15); }
+
+  /* Pills */
+  .pills { display: flex; flex-wrap: wrap; gap: 7px; }
+  .pill {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: .85rem;
+    font-weight: 500;
+    background: var(--pill-bg);
+    color: var(--text-muted);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .pill:hover { border-color: var(--accent); color: var(--accent); }
+  .pill.active {
+    background: var(--accent);
+    color: var(--pill-active-text);
+    border-color: var(--accent);
+  }
+
+  /* Length toggle */
+  .toggle-group {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .toggle-btn {
+    flex: 1;
+    padding: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: .85rem;
+    font-weight: 500;
+    background: var(--toggle-bg);
+    color: var(--text-muted);
+    border: none;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .toggle-btn + .toggle-btn { border-left: 1px solid var(--border); }
+  .toggle-btn.active {
+    background: var(--toggle-active);
+    color: #fff;
+  }
+
+  /* Sliders */
+  .slider-wrap { position: relative; }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+  .slider-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: .75rem;
+    color: var(--text-muted);
+    margin-top: 5px;
+  }
+  .slider-live {
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-top: 4px;
+  }
+
+  /* Generate button */
+  .btn-generate {
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .btn-generate:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-generate:disabled { opacity: .65; cursor: not-allowed; }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Output panel */
+  .output-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .output-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+    min-height: 220px;
+    position: relative;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .output-card.visible { opacity: 1; }
+  .output-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .88rem;
+    line-height: 1.75;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: blink .8s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .output-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .badge {
+    font-size: .78rem;
+    color: var(--text-muted);
+    background: var(--pill-bg);
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+  .output-actions { display: flex; gap: 8px; }
+  .btn-secondary {
+    padding: 7px 16px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: .85rem;
+    font-weight: 500;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-secondary:disabled { opacity: .4; cursor: not-allowed; }
+
+  .placeholder-text {
+    color: var(--text-muted);
+    font-size: .9rem;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Product Review Generator</h1>
+  <p>Generate realistic fake reviews powered by ChatGPT</p>
+</header>
+
+<div class="layout">
+
+  <!-- CONTROLS -->
+  <div class="panel">
+    <form id="reviewForm">
+
+      <div class="field">
+        <label>Product Name</label>
+        <input type="text" id="product" placeholder="e.g. Sony WH-1000XM5" required />
+      </div>
+
+      <div class="field">
+        <label>Product Details / Notes</label>
+        <textarea id="details" placeholder="Features, gripes, keywords to weave in..."></textarea>
+      </div>
+
+      <div class="field">
+        <label>Star Rating</label>
+        <div class="stars" id="starsWidget" aria-label="Star rating">
+          <span class="star" data-v="1">★</span>
+          <span class="star" data-v="2">★</span>
+          <span class="star" data-v="3">★</span>
+          <span class="star" data-v="4">★</span>
+          <span class="star" data-v="5">★</span>
+        </div>
+        <input type="hidden" id="stars" value="4" />
+      </div>
+
+      <div class="field">
+        <label>Platform Style</label>
+        <select id="platform">
+          <option>Amazon</option>
+          <option>Yelp</option>
+          <option>Google Reviews</option>
+          <option>Reddit</option>
+          <option>App Store</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Temperament</label>
+        <div class="pills" id="temperamentGroup">
+          <button type="button" class="pill active" data-v="Happy">Happy</button>
+          <button type="button" class="pill" data-v="Satisfied">Satisfied</button>
+          <button type="button" class="pill" data-v="Neutral">Neutral</button>
+          <button type="button" class="pill" data-v="Disappointed">Disappointed</button>
+          <button type="button" class="pill" data-v="Angry">Angry</button>
+          <button type="button" class="pill" data-v="Sarcastic">Sarcastic</button>
+        </div>
+        <input type="hidden" id="temperament" value="Happy" />
+      </div>
+
+      <div class="field">
+        <label>Persona / Demographic</label>
+        <select id="persona">
+          <option value="None">None</option>
+          <option>Gen Z</option>
+          <option>Millennial</option>
+          <option>Boomer</option>
+          <option>Tech Bro</option>
+          <option>Soccer Mom</option>
+          <option>Academic</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Education Level</label>
+        <div class="slider-wrap">
+          <input type="range" id="education" min="1" max="5" value="3" />
+          <div class="slider-labels"><span>Barely literate</span><span>PhD-level</span></div>
+          <div class="slider-live" id="educationLabel">Average</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Authenticity</label>
+        <div class="slider-wrap">
+          <input type="range" id="authenticity" min="1" max="5" value="3" />
+          <div class="slider-labels"><span>Polished</span><span>Chaotic</span></div>
+          <div class="slider-live" id="authenticityLabel">Natural</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Review Length</label>
+        <div class="toggle-group" id="lengthGroup">
+          <button type="button" class="toggle-btn" data-v="short">Short (~50w)</button>
+          <button type="button" class="toggle-btn active" data-v="medium">Medium (~150w)</button>
+          <button type="button" class="toggle-btn" data-v="long">Long (~350w)</button>
+        </div>
+        <input type="hidden" id="length" value="medium" />
+      </div>
+
+      <div class="field">
+        <label>ChatGPT Model</label>
+        <select id="model">
+          <option value="gpt-4o">GPT-4o</option>
+          <option value="gpt-4o-mini">GPT-4o mini</option>
+          <option value="gpt-4-turbo">GPT-4 Turbo</option>
+          <option value="gpt-4">GPT-4</option>
+          <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+        </select>
+      </div>
+
+      <button type="submit" class="btn-generate" id="generateBtn">
+        <div class="spinner" id="spinner"></div>
+        <span id="generateLabel">Generate Review</span>
+      </button>
+
+    </form>
+  </div>
+
+  <!-- OUTPUT -->
+  <div class="output-panel">
+    <div class="output-card" id="outputCard">
+      <div class="placeholder-text" id="placeholder">Your review will appear here...</div>
+      <div class="output-text" id="outputText"></div>
+    </div>
+    <div class="output-meta">
+      <span class="badge" id="wordCount">0 words · 0 chars</span>
+      <div class="output-actions">
+        <button class="btn-secondary" id="copyBtn" disabled>Copy</button>
+        <button class="btn-secondary" id="regenBtn" disabled>Regenerate</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── Star picker ──────────────────────────────────────────────
+  const stars = document.querySelectorAll('.star');
+  const starsInput = document.getElementById('stars');
+  let currentStars = 4;
+
+  function renderStars(n) {
+    stars.forEach(s => s.classList.toggle('on', Number(s.dataset.v) <= n));
+  }
+  renderStars(currentStars);
+
+  stars.forEach(s => {
+    s.addEventListener('click', () => {
+      currentStars = Number(s.dataset.v);
+      starsInput.value = currentStars;
+      renderStars(currentStars);
+    });
+    s.addEventListener('mouseenter', () => renderStars(Number(s.dataset.v)));
+    s.addEventListener('mouseleave', () => renderStars(currentStars));
+  });
+
+  // ── Pill groups ──────────────────────────────────────────────
+  function initPillGroup(groupId, hiddenId) {
+    const group = document.getElementById(groupId);
+    const hidden = document.getElementById(hiddenId);
+    group.addEventListener('click', e => {
+      const pill = e.target.closest('.pill');
+      if (!pill) return;
+      group.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      hidden.value = pill.dataset.v;
+    });
+  }
+  initPillGroup('temperamentGroup', 'temperament');
+
+  // ── Length toggle ────────────────────────────────────────────
+  const lengthBtns = document.querySelectorAll('#lengthGroup .toggle-btn');
+  const lengthInput = document.getElementById('length');
+  lengthBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      lengthBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      lengthInput.value = btn.dataset.v;
+    });
+  });
+
+  // ── Sliders ──────────────────────────────────────────────────
+  const EDU_LABELS = ['', 'Barely literate', 'Below average', 'Average', 'Above average', 'PhD-level'];
+  const AUTH_LABELS = ['', 'Polished', 'Mostly clean', 'Natural', 'Informal', 'Chaotic'];
+
+  const educationSlider = document.getElementById('education');
+  const educationLabel = document.getElementById('educationLabel');
+  educationSlider.addEventListener('input', () => {
+    educationLabel.textContent = EDU_LABELS[educationSlider.value];
+  });
+  educationLabel.textContent = EDU_LABELS[educationSlider.value];
+
+  const authenticitySlider = document.getElementById('authenticity');
+  const authenticityLabel = document.getElementById('authenticityLabel');
+  authenticitySlider.addEventListener('input', () => {
+    authenticityLabel.textContent = AUTH_LABELS[authenticitySlider.value];
+  });
+  authenticityLabel.textContent = AUTH_LABELS[authenticitySlider.value];
+
+  // ── Output helpers ───────────────────────────────────────────
+  const outputCard = document.getElementById('outputCard');
+  const outputText = document.getElementById('outputText');
+  const placeholder = document.getElementById('placeholder');
+  const wordCountBadge = document.getElementById('wordCount');
+  const copyBtn = document.getElementById('copyBtn');
+  const regenBtn = document.getElementById('regenBtn');
+  const generateBtn = document.getElementById('generateBtn');
+  const spinner = document.getElementById('spinner');
+  const generateLabel = document.getElementById('generateLabel');
+
+  let cursor = null;
+  let fullText = '';
+
+  function updateWordCount(text) {
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    wordCountBadge.textContent = `${words} word${words !== 1 ? 's' : ''} · ${text.length} chars`;
+  }
+
+  function addCursor() {
+    if (cursor) return;
+    cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    outputText.appendChild(cursor);
+  }
+
+  function removeCursor() {
+    if (cursor) { cursor.remove(); cursor = null; }
+  }
+
+  function setGenerating(on) {
+    generateBtn.disabled = on;
+    spinner.style.display = on ? 'block' : 'none';
+    generateLabel.textContent = on ? 'Generating…' : 'Generate Review';
+    regenBtn.disabled = on;
+  }
+
+  // ── Core generate ────────────────────────────────────────────
+  async function generate() {
+    const product = document.getElementById('product').value.trim();
+    if (!product) {
+      document.getElementById('product').focus();
+      return;
+    }
+
+    const body = {
+      product,
+      details: document.getElementById('details').value.trim(),
+      stars: starsInput.value,
+      platform: document.getElementById('platform').value,
+      temperament: document.getElementById('temperament').value,
+      persona: document.getElementById('persona').value,
+      education: educationSlider.value,
+      authenticity: authenticitySlider.value,
+      length: lengthInput.value,
+      model: document.getElementById('model').value,
+    };
+
+    fullText = '';
+    outputText.textContent = '';
+    placeholder.style.display = 'none';
+    outputCard.classList.add('visible');
+    copyBtn.disabled = true;
+    setGenerating(true);
+    addCursor();
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+
+        const lines = buf.split('\n');
+        buf = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const raw = line.slice(5).trim();
+          if (raw === '[DONE]') break;
+          if (raw.startsWith('[ERROR]')) {
+            removeCursor();
+            outputText.textContent += '\n\n[Error: ' + raw.slice(7) + ']';
+            break;
+          }
+          try {
+            const token = JSON.parse(raw);
+            fullText += token;
+            // update text node before cursor
+            removeCursor();
+            outputText.textContent = fullText;
+            addCursor();
+            updateWordCount(fullText);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      outputText.textContent = 'Error: ' + err.message;
+    } finally {
+      removeCursor();
+      updateWordCount(fullText);
+      setGenerating(false);
+      copyBtn.disabled = false;
+      regenBtn.disabled = false;
+    }
+  }
+
+  // ── Events ───────────────────────────────────────────────────
+  document.getElementById('reviewForm').addEventListener('submit', e => {
+    e.preventDefault();
+    generate();
+  });
+
+  regenBtn.addEventListener('click', generate);
+
+  copyBtn.addEventListener('click', () => {
+    if (!fullText) return;
+    navigator.clipboard.writeText(fullText).then(() => {
+      const orig = copyBtn.textContent;
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => { copyBtn.textContent = orig; }, 1500);
+    });
+  });
+</script>
+
+</body>
+</html>
