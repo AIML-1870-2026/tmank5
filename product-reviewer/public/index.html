@@ -94,7 +94,7 @@
     letter-spacing: .5px;
     margin-bottom: 7px;
   }
-  input[type="text"], textarea, select {
+  input[type="text"], input[type="password"], textarea, select {
     width: 100%;
     padding: 9px 12px;
     border: 1px solid var(--border);
@@ -106,8 +106,57 @@
     outline: none;
     transition: border-color .15s;
   }
-  input[type="text"]:focus, textarea:focus, select:focus {
+  input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
     border-color: var(--accent);
+  }
+
+  /* API key field */
+  .api-key-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    transition: border-color .15s;
+  }
+  .api-key-wrap:focus-within { border-color: var(--accent); }
+  .api-key-icon {
+    padding: 0 10px 0 12px;
+    color: var(--text-muted);
+    font-size: 1rem;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+  .api-key-wrap input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 9px 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .82rem;
+    color: var(--text);
+    outline: none;
+    min-width: 0;
+    letter-spacing: .04em;
+  }
+  .api-key-toggle {
+    padding: 0 12px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: .8rem;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    flex-shrink: 0;
+    transition: color .15s;
+  }
+  .api-key-toggle:hover { color: var(--accent); }
+  .api-key-hint {
+    font-size: .75rem;
+    color: var(--text-muted);
+    margin-top: 5px;
   }
   textarea { resize: vertical; min-height: 80px; }
 
@@ -324,6 +373,16 @@
     <form id="reviewForm">
 
       <div class="field">
+        <label>OpenAI API Key</label>
+        <div class="api-key-wrap">
+          <span class="api-key-icon">🔑</span>
+          <input type="password" id="apiKey" placeholder="sk-..." autocomplete="off" spellcheck="false" required />
+          <button type="button" class="api-key-toggle" id="apiKeyToggle">Show</button>
+        </div>
+        <div class="api-key-hint">Your key is never stored — sent only when generating.</div>
+      </div>
+
+      <div class="field">
         <label>Product Name</label>
         <input type="text" id="product" placeholder="e.g. Sony WH-1000XM5" required />
       </div>
@@ -447,6 +506,15 @@
 </div>
 
 <script>
+  // ── API key toggle ───────────────────────────────────────────
+  const apiKeyInput = document.getElementById('apiKey');
+  const apiKeyToggle = document.getElementById('apiKeyToggle');
+  apiKeyToggle.addEventListener('click', () => {
+    const hidden = apiKeyInput.type === 'password';
+    apiKeyInput.type = hidden ? 'text' : 'password';
+    apiKeyToggle.textContent = hidden ? 'Hide' : 'Show';
+  });
+
   // ── Star picker ──────────────────────────────────────────────
   const stars = document.querySelectorAll('.star');
   const starsInput = document.getElementById('stars');
@@ -549,6 +617,12 @@
 
   // ── Core generate ────────────────────────────────────────────
   async function generate() {
+    const apiKey = apiKeyInput.value.trim();
+    if (!apiKey) {
+      apiKeyInput.focus();
+      return;
+    }
+
     const product = document.getElementById('product').value.trim();
     if (!product) {
       document.getElementById('product').focus();
@@ -566,6 +640,7 @@
       authenticity: authenticitySlider.value,
       length: lengthInput.value,
       model: document.getElementById('model').value,
+      apiKey: document.getElementById('apiKey').value.trim(),
     };
 
     fullText = '';

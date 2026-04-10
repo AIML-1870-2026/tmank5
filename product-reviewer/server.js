@@ -1,4 +1,3 @@
-require("dotenv").config();
 const express = require("express");
 const OpenAI = require("openai");
 const path = require("path");
@@ -7,10 +6,8 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-let openai = null;
-function getClient() {
-  if (!openai) openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  return openai;
+function getClient(apiKey) {
+  return new OpenAI({ apiKey });
 }
 
 const EDUCATION_LABELS = {
@@ -37,7 +34,11 @@ function educationToTemperature(education) {
 }
 
 app.post("/api/generate", async (req, res) => {
-  const { product, details, stars, platform, temperament, persona, education, authenticity, length, model } = req.body;
+  const { product, details, stars, platform, temperament, persona, education, authenticity, length, model, apiKey } = req.body;
+
+  if (!apiKey) {
+    return res.status(400).json({ error: "API key is required" });
+  }
 
   const edu = EDUCATION_LABELS[education] || EDUCATION_LABELS[3];
   const authInstruction = AUTHENTICITY_INSTRUCTIONS[authenticity] || AUTHENTICITY_INSTRUCTIONS[3];
@@ -62,7 +63,7 @@ Write ONLY the review text. No preamble, no quotation marks around the whole rev
   res.flushHeaders();
 
   try {
-    const stream = await getClient().chat.completions.create({
+    const stream = await getClient(apiKey).chat.completions.create({
       model: model || "gpt-4o",
       stream: true,
       temperature,
