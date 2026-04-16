@@ -1,0 +1,1855 @@
+/* ============================================================
+   THE QUIET TABLE — Blackjack CSS
+   ============================================================ */
+
+/* --- CSS Custom Properties --- */
+:root {
+  --bg:             #F2EDE8;
+  --surface:        #E8E2DB;
+  --border:         #C8BFB4;
+  --text-primary:   #2C2825;
+  --text-secondary: #8C7E72;
+  --card-face:      #FDFAF7;
+  --card-shadow:    rgba(44, 40, 37, 0.10);
+  --accent:         #4A6741;
+  --accent-hover:   #3D5636;
+  --danger:         #8B4A42;
+  --chip-5:         #8B9E7A;
+  --chip-25:        #7A8B9E;
+  --chip-100:       #9E8A7A;
+  --chip-500:       #9E7A8A;
+
+  --font-serif:  'Cormorant Garamond', Georgia, serif;
+  --font-sans:   'DM Sans', system-ui, sans-serif;
+
+  --header-h:    60px;
+  --card-w:      112px;
+  --card-h:      162px;
+  --radius-card: 8px;
+  --radius-btn:  6px;
+}
+
+/* --- Reset --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-width: 1024px;
+}
+
+/* ============================================================
+   DECK POSITION (animation anchor, invisible)
+   ============================================================ */
+#deck-position {
+  position: fixed;
+  top: 20px;
+  right: 40px;
+  width: var(--card-w);
+  height: var(--card-h);
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+#header {
+  height: var(--header-h);
+  min-height: var(--header-h);
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+#balance-display {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+#balance-display .label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+#balance {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+/* ============================================================
+   MAIN TABLE LAYOUT
+   ============================================================ */
+#table {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 60px 24px;
+  overflow: hidden;
+  position: relative;
+  max-width: 900px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ============================================================
+   ZONE HEADERS (Dealer / Player labels + scores)
+   ============================================================ */
+.zone-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.zone-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.score-display {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 32px;
+  text-align: right;
+  display: inline-block;
+  transition: color 200ms ease;
+}
+
+.score-display.score-warning {
+  color: var(--danger);
+}
+
+/* ============================================================
+   DEALER ZONE
+   ============================================================ */
+#dealer-zone {
+  flex: 0 0 auto;
+  min-height: 200px;
+}
+
+/* ============================================================
+   DIVIDER
+   ============================================================ */
+#divider {
+  flex-shrink: 0;
+  height: 1px;
+  margin: 16px 0;
+  border: none;
+  border-top: 1.5px dashed var(--border);
+  opacity: 0.7;
+}
+
+/* ============================================================
+   PLAYER ZONE
+   ============================================================ */
+#player-zone {
+  flex: 0 0 auto;
+  min-height: 200px;
+  position: relative;
+}
+
+/* ============================================================
+   CARD ROW
+   ============================================================ */
+.card-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: var(--card-h);
+}
+
+/* ============================================================
+   CARD BASE STYLES
+   ============================================================ */
+.card {
+  width: var(--card-w);
+  height: var(--card-h);
+  border-radius: var(--radius-card);
+  flex-shrink: 0;
+  position: relative;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+              opacity   420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Card dealing state — starts offset toward deck position */
+.card.card-dealing {
+  transform: translate(500px, -260px) rotate(6deg) scale(0.88);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Card inner — 3D flip container */
+.card-inner {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  border-radius: var(--radius-card);
+}
+
+/* Flip animation */
+.card-inner.card-flipping {
+  animation: cardFlip 350ms ease-in-out forwards;
+}
+
+@keyframes cardFlip {
+  0%   { transform: rotateY(0deg); }
+  49%  { transform: rotateY(89deg); }
+  51%  { transform: rotateY(91deg); }
+  100% { transform: rotateY(180deg); }
+}
+
+/* Card front and back */
+.card-front,
+.card-back {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-card);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transition: opacity 0ms;
+}
+
+/* --- Card Front --- */
+.card-front {
+  background-color: var(--card-face);
+  box-shadow: 0 2px 8px var(--card-shadow),
+              0 1px 2px rgba(44, 40, 37, 0.06),
+              inset 0 0 0 0.5px rgba(200, 191, 180, 0.5);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 9px;
+}
+
+/* --- Card Back --- */
+.card-back {
+  background-color: #E0D9D0;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      #C8BFB4 0px,
+      #C8BFB4 1px,
+      transparent 1px,
+      transparent 8px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      #C8BFB4 0px,
+      #C8BFB4 1px,
+      transparent 1px,
+      transparent 8px
+    );
+  box-shadow: 0 2px 8px var(--card-shadow),
+              0 1px 2px rgba(44, 40, 37, 0.06),
+              inset 0 0 0 0.5px rgba(200, 191, 180, 0.5);
+}
+
+/* --- Face-up / Face-down state via data attribute --- */
+.card[data-face-up="true"]  .card-front { opacity: 1; }
+.card[data-face-up="true"]  .card-back  { opacity: 0; }
+.card[data-face-up="false"] .card-front { opacity: 0; }
+.card[data-face-up="false"] .card-back  { opacity: 1; }
+
+/* --- Card corners --- */
+.card-corner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  gap: 1px;
+}
+
+.card-corner.top-left {
+  align-self: flex-start;
+}
+
+.card-corner.bottom-right {
+  align-self: flex-end;
+  transform: rotate(180deg);
+  margin-top: auto;
+}
+
+.card-val {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  display: block;
+  line-height: 1;
+}
+
+.card-suit {
+  font-size: 14px;
+  display: block;
+  line-height: 1;
+}
+
+.card-center-suit {
+  font-size: 46px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+/* --- Suit colors --- */
+.card[data-suit="hearts"]   .card-front,
+.card[data-suit="diamonds"] .card-front {
+  color: var(--danger);
+}
+
+.card[data-suit="clubs"]  .card-front,
+.card[data-suit="spades"] .card-front {
+  color: var(--text-primary);
+}
+
+/* --- Busted overlay --- */
+.card.card-busted::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-card);
+  background-color: rgba(139, 74, 66, 0.18);
+  pointer-events: none;
+  z-index: 2;
+  transition: background-color 300ms ease;
+}
+
+/* ============================================================
+   WIN GLOW ON PLAYER CARD ROW
+   ============================================================ */
+@keyframes winGlow {
+  0%   { box-shadow: 0 0 0 0 rgba(74, 103, 65, 0); }
+  35%  { box-shadow: 0 0 24px 10px rgba(74, 103, 65, 0.28); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 103, 65, 0); }
+}
+
+#player-cards.win-glow {
+  animation: winGlow 1400ms ease-out forwards;
+  border-radius: 4px;
+}
+
+/* ============================================================
+   SCORE POP ANIMATION
+   ============================================================ */
+@keyframes scorePop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+.score-display.score-pop {
+  animation: scorePop 200ms ease-out forwards;
+}
+
+/* ============================================================
+   BET AREA
+   ============================================================ */
+#bet-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  min-height: 52px;
+}
+
+#bet-display {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+  transition: opacity 200ms ease, visibility 200ms ease;
+}
+
+#bet-display.hidden {
+  visibility: hidden;
+  opacity: 0;
+}
+
+#bet-amount {
+  color: var(--accent);
+}
+
+/* --- Chip stack visual --- */
+#chip-stack {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 20px;
+  position: relative;
+  gap: 0;
+}
+
+.stack-chip {
+  width: 30px;
+  height: 12px;
+  border-radius: 50%;
+  margin-left: -8px;
+  box-shadow: 0 -1px 0 rgba(255,255,255,0.25), 0 2px 4px rgba(44, 40, 37, 0.2);
+  flex-shrink: 0;
+}
+
+.stack-chip:first-child { margin-left: 0; }
+.stack-chip[data-color="5"]   { background-color: var(--chip-5); }
+.stack-chip[data-color="25"]  { background-color: var(--chip-25); }
+.stack-chip[data-color="100"] { background-color: var(--chip-100); }
+.stack-chip[data-color="500"] { background-color: var(--chip-500); }
+
+/* ============================================================
+   ACTION AREA
+   ============================================================ */
+#action-area {
+  margin-top: auto;
+  padding-top: 12px;
+  position: relative;
+  display: grid;
+  grid-template-areas: "controls";
+  min-height: 110px;
+  align-items: center;
+}
+
+#betting-controls,
+#play-controls {
+  grid-area: controls;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  transition: opacity 220ms ease, visibility 220ms ease;
+}
+
+#betting-controls {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+#chip-tray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#bet-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 10px;
+}
+
+/* Play controls hidden by default */
+#play-controls {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+#play-controls.active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+#betting-controls.hidden-phase {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* ============================================================
+   BASE BUTTON STYLES
+   ============================================================ */
+button {
+  background-color: var(--bg);
+  border: 1.5px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-btn);
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: border-color 80ms ease,
+              background-color 80ms ease,
+              transform 80ms ease,
+              opacity 200ms ease;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  position: relative;
+  user-select: none;
+  line-height: 1.3;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background-color: #EDE7E0;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+  cursor: default;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   KEY HINT LABELS
+   ============================================================ */
+.key-hint {
+  font-size: 10px;
+  color: var(--text-secondary);
+  display: block;
+  font-family: var(--font-sans);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================
+   CHIP BUTTONS
+   ============================================================ */
+.chip {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  border-radius: 50%;
+  width: 72px;
+  height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: transform 80ms ease, filter 80ms ease, opacity 200ms ease;
+}
+
+.chip:hover:not(:disabled) {
+  transform: translateY(-3px) scale(1.06);
+  filter: brightness(1.1);
+  background: transparent;
+  border-color: transparent;
+}
+
+.chip:active:not(:disabled) {
+  transform: translateY(0) scale(0.95);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 50%;
+}
+
+.chip svg {
+  display: block;
+  filter: drop-shadow(0 2px 5px rgba(44, 40, 37, 0.25));
+  transition: filter 80ms ease;
+}
+
+.chip:hover:not(:disabled) svg {
+  filter: drop-shadow(0 4px 10px rgba(44, 40, 37, 0.30));
+}
+
+/* ============================================================
+   SPECIFIC BUTTON OVERRIDES
+   ============================================================ */
+#btn-new-game {
+  font-size: 12px;
+  padding: 8px 16px;
+}
+
+#btn-clear {
+  font-size: 12px;
+  padding: 8px 14px;
+  color: var(--text-secondary);
+}
+
+#btn-clear:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+  background-color: rgba(139, 74, 66, 0.05);
+}
+
+/* Deal button */
+#btn-deal {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 10px 24px;
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #FDFAF7;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease,
+              background-color 80ms ease,
+              border-color 80ms ease,
+              transform 80ms ease;
+}
+
+#btn-deal.deal-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#btn-deal:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+#btn-deal .key-hint {
+  color: rgba(253, 250, 247, 0.60);
+}
+
+/* Hit / Stand / Double */
+#btn-hit,
+#btn-stand,
+#btn-double {
+  min-width: 90px;
+  font-size: 13px;
+}
+
+#btn-hit:hover:not(:disabled) {
+  border-color: var(--accent);
+  background-color: rgba(74, 103, 65, 0.06);
+}
+
+#btn-stand:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+  background-color: rgba(140, 126, 114, 0.08);
+}
+
+#btn-double:hover:not(:disabled) {
+  border-color: var(--chip-100);
+  background-color: rgba(158, 138, 122, 0.08);
+}
+
+/* ============================================================
+   RESULT OVERLAY
+   ============================================================ */
+#result-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+  z-index: 5;
+  border-radius: 4px;
+}
+
+#result-overlay.result-visible {
+  opacity: 1;
+}
+
+#result-message {
+  font-family: var(--font-serif);
+  font-size: 52px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+  text-align: center;
+  line-height: 1.1;
+  padding: 14px 32px;
+  background-color: rgba(242, 237, 232, 0.88);
+  border-radius: 8px;
+  border: 1px solid rgba(200, 191, 180, 0.6);
+  backdrop-filter: blur(2px);
+  text-shadow: 0 1px 8px rgba(242, 237, 232, 0.7);
+}
+
+/* Result color variants via data-result attribute */
+#result-overlay[data-result="WIN"] #result-message,
+#result-overlay[data-result="BLACKJACK"] #result-message,
+#result-overlay[data-result="DEALER BUSTS"] #result-message {
+  color: var(--accent);
+  border-color: rgba(74, 103, 65, 0.3);
+}
+
+#result-overlay[data-result="BUST"] #result-message,
+#result-overlay[data-result="LOSE"] #result-message {
+  color: var(--danger);
+  border-color: rgba(139, 74, 66, 0.25);
+}
+
+#result-overlay[data-result="PUSH"] #result-message {
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   GAME OVER MODAL
+   ============================================================ */
+#game-over-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background-color: rgba(242, 237, 232, 0.90);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+#game-over-modal.visible {
+  display: flex;
+}
+
+.modal-card {
+  background-color: var(--surface);
+  padding: 48px 56px;
+  border-radius: 12px;
+  text-align: center;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 40px rgba(44, 40, 37, 0.14),
+              0 2px 8px rgba(44, 40, 37, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-title {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.modal-sub {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 400;
+  margin-bottom: 8px;
+}
+
+#btn-restart {
+  margin-top: 8px;
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #FDFAF7;
+  padding: 11px 32px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+#btn-restart:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* ============================================================
+   UTILITY
+   ============================================================ */
+.hidden {
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+::selection {
+  background-color: rgba(74, 103, 65, 0.18);
+  color: var(--text-primary);
+}
+
+::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none; }
+
+/* ============================================================
+   RESPONSIVE — down to 1024px
+   ============================================================ */
+/* ============================================================
+   SOUND TOGGLE BUTTON
+   ============================================================ */
+#btn-sound {
+  font-size: 12px;
+  padding: 8px 14px;
+  color: var(--text-secondary);
+  border-color: transparent;
+  background: transparent;
+  gap: 0;
+}
+
+#btn-sound:hover:not(:disabled) {
+  border-color: var(--border);
+  background-color: var(--bg);
+  color: var(--text-primary);
+}
+
+#btn-sound.sound-off {
+  color: var(--danger);
+  opacity: 0.6;
+}
+
+/* header action group */
+#header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@media (max-width: 1200px) {
+  #table  { padding: 20px 40px 18px; }
+  #header { padding: 0 28px; }
+}
+
+@media (max-width: 1100px) {
+  #table { padding: 16px 28px 14px; }
+  #chip-tray { gap: 4px; }
+  .chip { width: 62px; height: 70px; }
+  .chip svg { width: 52px; height: 52px; }
+}
+
+/* ============================================================
+   CHEATS MODE — Toggle Button
+   ============================================================ */
+#btn-cheats {
+  font-size: 12px;
+  padding: 8px 14px;
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background: transparent;
+  gap: 0;
+  transition: border-color 120ms ease, background-color 120ms ease,
+              color 120ms ease, box-shadow 120ms ease;
+}
+
+#btn-cheats:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+  background-color: var(--bg);
+  color: var(--text-primary);
+}
+
+#btn-cheats.cheats-on {
+  color: #7A5C00;
+  border-color: #C49A00;
+  background-color: rgba(196, 154, 0, 0.10);
+  box-shadow: 0 0 0 1px rgba(196, 154, 0, 0.25);
+}
+
+#btn-cheats.cheats-on:hover {
+  background-color: rgba(196, 154, 0, 0.18);
+}
+
+/* ============================================================
+   TRAINING MODE BADGE
+   ============================================================ */
+#training-badge {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background-color: rgba(196, 154, 0, 0.12);
+  color: #7A5C00;
+  border: 1px solid rgba(196, 154, 0, 0.35);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-family: var(--font-sans);
+  pointer-events: none;
+  z-index: 90;
+  opacity: 0;
+  transition: opacity 250ms ease, transform 250ms ease;
+}
+
+#training-badge.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ============================================================
+   CHEATS BACKDROP (mobile-only — desktop never blocks game clicks)
+   ============================================================ */
+#cheats-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(44, 40, 37, 0.35);
+  z-index: 199;
+  opacity: 0;
+  pointer-events: none;  /* never blocks on desktop */
+  transition: opacity 250ms ease;
+  /* hidden entirely on desktop — only shown on mobile */
+  display: none;
+}
+
+/* Mobile only: backdrop shows and blocks taps to close drawer */
+@media (max-width: 768px) {
+  #cheats-backdrop {
+    display: block;
+  }
+  #cheats-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* ============================================================
+   CHEATS SIDE DRAWER
+   ============================================================ */
+#cheats-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 320px;
+  height: 100%;
+  background-color: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 250ms ease-in-out;
+  overflow-y: auto;
+  box-shadow: -4px 0 24px rgba(44, 40, 37, 0.10);
+}
+
+#cheats-drawer.open {
+  transform: translateX(0);
+}
+
+/* --- Drawer Header --- */
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background-color: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.drawer-title {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+
+#cheats-close {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+  font-size: 18px;
+  padding: 4px 8px;
+  line-height: 1;
+  min-width: unset;
+  gap: 0;
+}
+
+#cheats-close:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border);
+  background-color: var(--bg);
+}
+
+/* --- Drawer Body --- */
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0 20px;
+}
+
+/* --- Collapsible Sections --- */
+.drawer-section {
+  border-bottom: 1px solid var(--border);
+}
+
+.drawer-section > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: color 100ms ease;
+}
+
+.drawer-section > summary::-webkit-details-marker { display: none; }
+
+.drawer-section > summary::after {
+  content: '\25BE';
+  font-size: 10px;
+  transition: transform 200ms ease;
+  color: var(--text-secondary);
+}
+
+.drawer-section[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.drawer-section > summary:hover { color: var(--text-primary); }
+
+.drawer-section > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Section content wrapper */
+.bust-content,
+.hilo-content,
+.advisor-content,
+.stats-content {
+  padding: 4px 20px 18px;
+  transition: opacity 200ms ease;
+}
+
+.section-dimmed {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.section-sublabel {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+/* ============================================================
+   BUST PROBABILITY METER
+   ============================================================ */
+.bust-percent-value {
+  font-family: var(--font-serif);
+  font-size: 40px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: 10px;
+  letter-spacing: -0.01em;
+}
+
+.bust-bar-track {
+  width: 100%;
+  height: 8px;
+  background-color: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.bust-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  width: 0%;
+  transition: width 300ms ease, background-color 300ms ease;
+}
+
+.bust-green  { background-color: #4A6741; }
+.bust-yellow { background-color: #B8860B; }
+.bust-orange { background-color: #C05C1A; }
+.bust-red    { background-color: var(--danger); }
+
+.bust-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* ============================================================
+   HI-LO CARD COUNTER
+   ============================================================ */
+.count-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.count-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.count-value {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1;
+  transition: color 200ms ease;
+  min-width: 48px;
+  text-align: right;
+}
+
+.count-value[data-sign="positive"] { color: #4A6741; }
+.count-value[data-sign="negative"] { color: var(--danger); }
+.count-value[data-sign="neutral"]  { color: var(--text-primary); }
+
+.count-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-top: 2px;
+  min-height: 16px;
+}
+
+.reshuffle-notice {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  background-color: rgba(196, 154, 0, 0.10);
+  border: 1px solid rgba(196, 154, 0, 0.25);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-style: normal;
+}
+
+/* True-count tooltip */
+.tooltip-trigger {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 50%;
+  min-width: unset;
+  gap: 0;
+  line-height: 1.4;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.tooltip-trigger:hover:not(:disabled) {
+  background-color: var(--bg);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.tooltip-popup {
+  display: none;
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  background-color: var(--text-primary);
+  color: var(--bg);
+  font-size: 11px;
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  z-index: 10;
+  box-shadow: 0 4px 16px rgba(44, 40, 37, 0.18);
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.tooltip-popup.visible { display: block; }
+
+/* ============================================================
+   OPTIMAL MOVE ADVISOR
+   ============================================================ */
+.advisor-badge {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 8px 18px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  color: var(--text-secondary);
+  background-color: var(--bg);
+  margin-bottom: 10px;
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+
+.advisor-badge[data-move="H"]  {
+  background-color: rgba(45, 100, 180, 0.10);
+  color: #1A5FA8;
+  border-color: rgba(45, 100, 180, 0.35);
+}
+.advisor-badge[data-move="S"]  {
+  background-color: rgba(74, 103, 65, 0.10);
+  color: var(--accent);
+  border-color: rgba(74, 103, 65, 0.35);
+}
+.advisor-badge[data-move="D"]  {
+  background-color: rgba(100, 60, 160, 0.10);
+  color: #6B30AA;
+  border-color: rgba(100, 60, 160, 0.30);
+}
+.advisor-badge[data-move="Sp"] {
+  background-color: rgba(196, 154, 0, 0.10);
+  color: #7A5C00;
+  border-color: rgba(196, 154, 0, 0.35);
+}
+
+.advisor-reasoning {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  font-style: italic;
+  min-height: 18px;
+}
+
+/* ============================================================
+   SESSION STATS
+   ============================================================ */
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.stat-row span:last-child {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   CARD FLASH BADGE (+1 / 0 / -1)
+   ============================================================ */
+.card-flash-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background-color: var(--text-primary);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  border-radius: 10px;
+  padding: 2px 6px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.card-flash-badge[data-sign="positive"] { background-color: #4A6741; }
+.card-flash-badge[data-sign="negative"] { background-color: var(--danger); }
+.card-flash-badge[data-sign="neutral"]  { background-color: var(--text-secondary); }
+
+.card-flash-badge.flash-animate {
+  opacity: 1;
+  transform: translateY(0);
+  animation: flashFade 1100ms ease forwards;
+}
+
+@keyframes flashFade {
+  0%   { opacity: 1; transform: translateY(0); }
+  60%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-6px); }
+}
+
+/* ============================================================
+   DEVIATION TOAST
+   ============================================================ */
+#deviation-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background-color: var(--text-primary);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  padding: 9px 20px;
+  border-radius: 20px;
+  z-index: 300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease, transform 200ms ease;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(44, 40, 37, 0.20);
+}
+
+#deviation-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ============================================================
+   SPLIT — two-hand layout
+   ============================================================ */
+
+/* Hands area: single column by default, two columns when split */
+#player-hands-area {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  width: 100%;
+}
+
+#player-hand-wrapper,
+#split-hand-wrapper {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 8px;
+  transition: box-shadow 180ms ease, border-color 180ms ease;
+}
+
+/* Vertical divider between the two hands when split is active */
+#player-zone.split-active #player-hand-wrapper {
+  border-right: 1px solid var(--border);
+}
+
+/* Active hand gets a subtle highlight ring */
+.hand-active {
+  box-shadow: 0 0 0 2px rgba(74, 103, 65, 0.45);
+}
+
+/* Smaller cards in split mode so both hands fit side by side */
+#player-zone.split-active {
+  --card-w: 90px;
+  --card-h: 130px;
+}
+
+/* Split button — amber accent to match "Sp" advisor badge */
+#btn-split {
+  min-width: 90px;
+  font-size: 13px;
+}
+
+#btn-split:hover:not(:disabled) {
+  border-color: #9E8A4A;
+  background-color: rgba(158, 138, 74, 0.08);
+}
+
+/* Per-hand result coloring via data-result on the wrapper */
+#player-hand-wrapper[data-result="WIN"],
+#split-hand-wrapper[data-result="WIN"] {
+  background-color: rgba(74, 103, 65, 0.07);
+}
+
+#player-hand-wrapper[data-result="BUST"],
+#split-hand-wrapper[data-result="BUST"],
+#player-hand-wrapper[data-result="LOSE"],
+#split-hand-wrapper[data-result="LOSE"] {
+  background-color: rgba(139, 74, 66, 0.07);
+}
+
+#player-hand-wrapper[data-result="PUSH"],
+#split-hand-wrapper[data-result="PUSH"] {
+  background-color: rgba(140, 126, 114, 0.07);
+}
+
+/* Mobile: stack split hands vertically */
+@media (max-width: 600px) {
+  #player-zone.split-active #player-hands-area {
+    flex-direction: column;
+    gap: 12px;
+  }
+  #player-zone.split-active #player-hand-wrapper {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  #player-zone.split-active {
+    --card-w: 80px;
+    --card-h: 116px;
+  }
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  #cheats-drawer           { transition: none; }
+  #training-badge          { transition: none; }
+  #cheats-backdrop         { transition: none; }
+  .card-flash-badge        { animation: none; transition: none; }
+  .bust-bar-fill           { transition: none; }
+  #deviation-toast         { transition: none; }
+}
+
+/* ============================================================
+   MOBILE — drawer is full-width overlay
+   ============================================================ */
+@media (max-width: 768px) {
+  #cheats-drawer {
+    width: 100%;
+  }
+  body { min-width: unset; }
+}
+
+
+/* ============================================================
+   AI AGENT MODULE
+   ============================================================ */
+
+/* --- Header button active state --- */
+#btn-agent.agent-active {
+  background-color: rgba(45, 100, 180, 0.08);
+  border-color: rgba(45, 100, 180, 0.40);
+  color: #1A5FA8;
+}
+
+/* ============================================================
+   API KEY MODAL
+   ============================================================ */
+#agent-modal {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(44, 40, 37, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+#agent-modal.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.agent-modal-card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px 32px;
+  width: min(420px, calc(100vw - 40px));
+  box-shadow: 0 8px 40px rgba(44, 40, 37, 0.18);
+}
+
+.agent-modal-title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.agent-modal-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.55;
+}
+
+.agent-field {
+  margin-bottom: 16px;
+}
+
+.agent-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.agent-field input,
+.agent-field select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  appearance: auto;
+}
+
+.agent-field input:focus,
+.agent-field select:focus {
+  border-color: #1A5FA8;
+  box-shadow: 0 0 0 2px rgba(45, 100, 180, 0.15);
+}
+
+.agent-key-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background-color: rgba(196, 154, 0, 0.08);
+  border: 1px solid rgba(196, 154, 0, 0.25);
+  border-radius: 6px;
+  padding: 7px 12px;
+  margin-bottom: 20px;
+  line-height: 1.55;
+}
+
+.agent-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ============================================================
+   SECONDARY / GHOST BUTTON
+   ============================================================ */
+.agent-btn-secondary {
+  background-color: transparent !important;
+  border-color: var(--border) !important;
+  color: var(--text-secondary) !important;
+}
+
+.agent-btn-secondary:hover:not(:disabled) {
+  border-color: var(--text-secondary) !important;
+  color: var(--text-primary) !important;
+  background-color: var(--bg) !important;
+}
+
+/* ============================================================
+   AGENT SIDE PANEL (mirrors cheats drawer layout)
+   ============================================================ */
+#agent-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 320px;
+  height: 100%;
+  background-color: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 250ms ease-in-out;
+  overflow-y: auto;
+  box-shadow: -4px 0 24px rgba(44, 40, 37, 0.10);
+}
+
+#agent-panel.open {
+  transform: translateX(0);
+}
+
+#agent-close {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+  font-size: 18px;
+  padding: 4px 8px;
+  line-height: 1;
+  min-width: unset;
+  gap: 0;
+}
+
+#agent-close:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border);
+  background-color: var(--bg);
+}
+
+.agent-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+/* --- Sections inside panel --- */
+.agent-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.agent-footer {
+  border-bottom: none;
+}
+
+/* --- Status messages --- */
+.agent-status-msg {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.agent-error {
+  color: var(--danger);
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* --- Spinner --- */
+.agent-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: agentSpin 0.65s linear infinite;
+  vertical-align: middle;
+  margin-right: 5px;
+}
+
+@keyframes agentSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* --- Execute / Dismiss buttons --- */
+.agent-execute-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.agent-execute-row button {
+  flex: 1;
+  font-size: 13px;
+}
+
+#agent-execute-btn {
+  background-color: rgba(45, 100, 180, 0.10);
+  border-color: rgba(45, 100, 180, 0.35);
+  color: #1A5FA8;
+  font-weight: 500;
+}
+
+#agent-execute-btn:hover:not(:disabled) {
+  background-color: rgba(45, 100, 180, 0.18);
+  border-color: #1A5FA8;
+}
+
+/* --- Context preview --- */
+.agent-context-preview {
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.agent-context-empty {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.ctx-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ctx-row span:first-child {
+  color: var(--text-secondary);
+}
+
+.ctx-row span:last-child {
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+/* --- Disconnect button --- */
+.agent-disconnect {
+  width: 100%;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--danger) !important;
+  border-color: rgba(139, 74, 66, 0.30) !important;
+}
+
+.agent-disconnect:hover:not(:disabled) {
+  background-color: rgba(139, 74, 66, 0.07) !important;
+  border-color: var(--danger) !important;
+}
+
+/* ============================================================
+   UTILITY
+   ============================================================ */
+.agent-hidden { display: none !important; }
+
+/* ============================================================
+   MOBILE — panel is full-width overlay
+   ============================================================ */
+@media (max-width: 768px) {
+  #agent-panel { width: 100%; }
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  #agent-panel    { transition: none; }
+  #agent-modal    { transition: none; }
+  .agent-spinner  { animation: none; }
+}
+
+
+/* ============================================================
+   AI AGENT — AUTO-PLAY ADDITIONS
+   ============================================================ */
+
+/* Auto-play section container */
+.agent-autoplay-section {
+  background-color: rgba(44, 40, 37, 0.03);
+}
+
+/* Bet size row */
+.agent-bet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.agent-bet-label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* Chip pill buttons */
+.agent-chip-pills {
+  display: flex;
+  gap: 5px;
+}
+
+.agent-bet-chip {
+  padding: 3px 9px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  min-width: unset !important;
+  border-radius: 12px !important;
+  gap: 0 !important;
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background-color: var(--bg);
+}
+
+.agent-bet-chip:hover:not(:disabled) {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.agent-bet-chip.agent-chip-selected {
+  background-color: rgba(45, 100, 180, 0.10) !important;
+  border-color: rgba(45, 100, 180, 0.40) !important;
+  color: #1A5FA8 !important;
+}
+
+/* Auto-play main toggle button */
+#agent-autoplay-btn {
+  width: 100%;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Stop state — danger coloring */
+#agent-autoplay-btn.agent-autoplay-stop {
+  background-color: rgba(139, 74, 66, 0.10) !important;
+  border-color: rgba(139, 74, 66, 0.40) !important;
+  color: var(--danger) !important;
+}
+
+#agent-autoplay-btn.agent-autoplay-stop:hover:not(:disabled) {
+  background-color: rgba(139, 74, 66, 0.18) !important;
+  border-color: var(--danger) !important;
+}
+
+/* Running indicator */
+.agent-autoplay-running {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.agent-autoplay-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  flex-shrink: 0;
+  animation: autoPlayPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes autoPlayPulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .agent-autoplay-dot { animation: none; }
+}
